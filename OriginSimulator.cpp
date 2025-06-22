@@ -20,6 +20,7 @@
 #include <QPainter>
 #include <QCryptographicHash>
 #include <cmath>
+#define qrand rand
 
 // Constants
 const QString SERVER_NAME = "CelestronOriginSimulator";
@@ -436,30 +437,61 @@ private slots:
     }
     
     void handleHttpImageRequest(QTcpSocket *socket, const QString &path) {
-        // Extract filename: /SmartScope-1.0/dev2/Images/Temp/0.jpg -> 0.jpg
-        QString fileName = path.split("/").last();
-        QString fullPath = QString("simulator_data/Images/Temp/%1").arg(fileName);
-        
-        QFile imageFile(fullPath);
-        if (!imageFile.exists() || !imageFile.open(QIODevice::ReadOnly)) {
-            qDebug() << "Image not found:" << fullPath;
-            sendHttpResponse(socket, 404, "text/plain", "Image not found");
-            return;
-        }
-        
-        QByteArray imageData = imageFile.readAll();
-        imageFile.close();
-        
-        // Determine content type
-        QString contentType = "image/jpeg";
-        if (fileName.endsWith(".png", Qt::CaseInsensitive)) {
-            contentType = "image/png";
-        } else if (fileName.endsWith(".tiff", Qt::CaseInsensitive)) {
-            contentType = "image/tiff";
-        }
-        
-        sendHttpResponse(socket, 200, contentType, imageData);
-        qDebug() << "Served Origin image:" << fileName << "(" << imageData.size() << "bytes)";
+	qDebug() << "Handling HTTP image request for path:" << path;
+
+	// Extract filename from path: /SmartScope-1.0/dev2/Images/Temp/0.jpg -> 0.jpg
+	QString fileName = path.split("/").last();
+
+	// Remove any query parameters if present
+	if (fileName.contains("?")) {
+	    fileName = fileName.split("?").first();
+	}
+
+	qDebug() << "Extracted filename:" << fileName;
+
+	QString fullPath = QString("/Users/jonathan/OriginSimulator/simulator_data/Images/Temp/%1").arg(fileName);
+	qDebug() << "Looking for file at:" << fullPath;
+
+	QFile imageFile(fullPath);
+	if (!imageFile.exists()) {
+	    qDebug() << "Image file does not exist:" << fullPath;
+
+	    // List what files actually exist in the directory
+	    QDir tempDir("simulator_data/Images/Temp");
+	    if (tempDir.exists()) {
+		qDebug() << "Available files in simulator_data/Images/Temp:";
+		QStringList files = tempDir.entryList(QDir::Files);
+		for (const QString &file : files) {
+		    qDebug() << "  " << file;
+		}
+	    } else {
+		qDebug() << "Directory simulator_data/Images/Temp does not exist!";
+	    }
+
+	    sendHttpResponse(socket, 404, "text/plain", "Image not found");
+	    return;
+	}
+
+	if (!imageFile.open(QIODevice::ReadOnly)) {
+	    qDebug() << "Failed to open image file:" << fullPath;
+	    sendHttpResponse(socket, 500, "text/plain", "Failed to read image");
+	    return;
+	}
+
+	QByteArray imageData = imageFile.readAll();
+	imageFile.close();
+
+	// Determine content type
+	QString contentType = "image/jpeg";
+	if (fileName.endsWith(".png", Qt::CaseInsensitive)) {
+	    contentType = "image/png";
+	} else if (fileName.endsWith(".tiff", Qt::CaseInsensitive) || fileName.endsWith(".tif", Qt::CaseInsensitive)) {
+	    contentType = "image/tiff";
+	}
+
+	qDebug() << "Serving image:" << fileName << "(" << imageData.size() << "bytes) with content-type:" << contentType;
+
+	sendHttpResponse(socket, 200, contentType, imageData);
     }
     
     void handleHttpAstroImageRequest(QTcpSocket *socket, const QString &path) {
@@ -1441,90 +1473,150 @@ private:
         
         sendJsonMessage(wsConn, calNotification);
     }
-    
+
     // Create dummy images for testing
     void createDummyImages() {
-        // Create directory
-        QDir().mkpath("simulator_data/Images/Temp");
-        
-        // Create 10 dummy images (0.jpg to 9.jpg)
-        for (int i = 0; i < 10; ++i) {
-            // Create a simple image with text
-            QImage image(800, 600, QImage::Format_RGB32);
-            image.fill(Qt::black);
-            
-            // Draw some "stars"
-            QPainter painter(&image);
-            painter.setPen(Qt::white);
-            painter.setFont(QFont("Arial", 20));
-            painter.drawText(QRect(50, 50, 700, 100), 
-                            Qt::AlignCenter, 
-                            QString("Celestron Origin Simulator - Image %1").arg(i));
-            
-            // Draw some random stars
-            painter.setPen(Qt::white);
-            for (int j = 0; j < 200; ++j) {
-                int x = rand() % image.width();
-                int y = rand() % image.height();
-                int size = (rand() % 3) + 1;
-                painter.drawEllipse(x, y, size, size);
-            }
-            
-            // Save the image
-            QString fileName = QString("simulator_data/Images/Temp/%1.jpg").arg(i);
-            image.save(fileName);
-            
-            qDebug() << "Created dummy image:" << fileName;
-        }
-        
-        // Create subdirectory for each astrophotography dir
-        for (const QString &dir : telescopeState.astrophotographyDirs) {
-            QString dirPath = QString("simulator_data/Images/Astrophotography/%1").arg(dir);
-            QDir().mkpath(dirPath);
-            
-            // Create a stacked master image
-            QImage masterImage(1024, 768, QImage::Format_RGB32);
-            masterImage.fill(Qt::black);
-            
-            // Draw some "stars" and target name
-            QPainter painter(&masterImage);
-            painter.setPen(Qt::white);
-            painter.setFont(QFont("Arial", 24));
-            painter.drawText(QRect(50, 50, 900, 100), 
-                            Qt::AlignCenter, 
-                            QString("Stacked Image: %1").arg(dir));
-            
-            // Draw some random stars with galaxy-like pattern
-            painter.setPen(Qt::white);
-            for (int j = 0; j < 1000; ++j) {
-                // Create a spiral galaxy pattern
-                double angle = (rand() % 360) * M_PI / 180.0;
-                double distance = (rand() % 300) + 50;
-                double xOffset = masterImage.width() / 2 + cos(angle) * distance;
-                double yOffset = masterImage.height() / 2 + sin(angle) * distance;
-                
-                int x = xOffset + (rand() % 20) - 10;
-                int y = yOffset + (rand() % 20) - 10;
-                
-                // Skip if outside image
-                if (x < 0 || x >= masterImage.width() || 
-                    y < 0 || y >= masterImage.height()) {
-                    continue;
-                }
-                
-                int brightness = rand() % 200 + 55;
-                painter.setPen(QColor(brightness, brightness, brightness));
-                
-                int size = (rand() % 4) + 1;
-                painter.drawEllipse(x, y, size, size);
-            }
-            
-            // Save the image
-            QString fileName = QString("%1/FinalStackedMaster.tiff").arg(dirPath);
-            masterImage.save(fileName);
-            
-            qDebug() << "Created dummy stacked image:" << fileName;
-        }
+	// Create directory structure
+	QString tempDir = "simulator_data/Images/Temp";
+	QString astroDir = "simulator_data/Images/Astrophotography";
+
+	if (!QDir().mkpath(tempDir)) {
+	    qDebug() << "Failed to create directory:" << tempDir;
+	    return;
+	}
+
+	if (!QDir().mkpath(astroDir)) {
+	    qDebug() << "Failed to create directory:" << astroDir;
+	    return;
+	}
+
+	qDebug() << "Creating dummy images in:" << tempDir;
+
+	// Create 10 dummy images (0.jpg to 9.jpg)
+	for (int i = 0; i < 10; ++i) {
+	    // Create a simple image with text
+	    QImage image(800, 600, QImage::Format_RGB888);
+	    image.fill(Qt::black);
+
+	    // Draw some "stars"
+	    QPainter painter(&image);
+	    painter.setPen(Qt::white);
+	    painter.setFont(QFont("Arial", 20));
+	    painter.drawText(QRect(50, 50, 700, 100), 
+			    Qt::AlignCenter, 
+			    QString("Celestron Origin Simulator - Image %1").arg(i));
+
+	    // Draw some random stars
+	    painter.setPen(Qt::white);
+	    painter.setBrush(Qt::white);
+	    for (int j = 0; j < 200; ++j) {
+		int x = qrand() % (image.width() - 10);
+		int y = qrand() % (image.height() - 10);
+		int size = (qrand() % 3) + 1;
+		painter.drawEllipse(x, y, size, size);
+	    }
+
+	    // Add timestamp
+	    painter.setPen(Qt::lightGray);
+	    painter.setFont(QFont("Arial", 12));
+	    painter.drawText(QRect(10, image.height() - 30, 400, 20), 
+			    Qt::AlignLeft, 
+			    QString("Created: %1").arg(QDateTime::currentDateTime().toString()));
+
+	    painter.end();
+
+	    // Save the image
+	    QString fileName = QString("%1/%2.jpg").arg(tempDir).arg(i);
+
+	    if (image.save(fileName, "JPEG", 90)) {
+		qDebug() << "Successfully created dummy image:" << fileName;
+
+		// Verify the file exists and get its size
+		QFileInfo fileInfo(fileName);
+		if (fileInfo.exists()) {
+		    qDebug() << "  File size:" << fileInfo.size() << "bytes";
+		} else {
+		    qDebug() << "  ERROR: File was not created successfully!";
+		}
+	    } else {
+		qDebug() << "Failed to save image:" << fileName;
+	    }
+	}
+
+	// Create subdirectory for each astrophotography dir
+	for (const QString &dir : telescopeState.astrophotographyDirs) {
+	    QString dirPath = QString("%1/%2").arg(astroDir).arg(dir);
+	    if (!QDir().mkpath(dirPath)) {
+		qDebug() << "Failed to create astrophotography directory:" << dirPath;
+		continue;
+	    }
+
+	    // Create a stacked master image
+	    QImage masterImage(1024, 768, QImage::Format_RGB888);
+	    masterImage.fill(Qt::black);
+
+	    // Draw some "stars" and target name
+	    QPainter painter(&masterImage);
+	    painter.setPen(Qt::white);
+	    painter.setFont(QFont("Arial", 24));
+	    painter.drawText(QRect(50, 50, 900, 100), 
+			    Qt::AlignCenter, 
+			    QString("Stacked Image: %1").arg(dir));
+
+	    // Draw some random stars with galaxy-like pattern
+	    painter.setPen(Qt::white);
+	    painter.setBrush(Qt::white);
+	    for (int j = 0; j < 1000; ++j) {
+		// Create a spiral galaxy pattern
+		double angle = (qrand() % 360) * M_PI / 180.0;
+		double distance = (qrand() % 300) + 50;
+		double xOffset = masterImage.width() / 2 + cos(angle) * distance;
+		double yOffset = masterImage.height() / 2 + sin(angle) * distance;
+
+		int x = xOffset + (qrand() % 20) - 10;
+		int y = yOffset + (qrand() % 20) - 10;
+
+		// Skip if outside image
+		if (x < 0 || x >= masterImage.width() || 
+		    y < 0 || y >= masterImage.height()) {
+		    continue;
+		}
+
+		int brightness = qrand() % 200 + 55;
+		painter.setPen(QColor(brightness, brightness, brightness));
+		painter.setBrush(QColor(brightness, brightness, brightness));
+
+		int size = (qrand() % 4) + 1;
+		painter.drawEllipse(x, y, size, size);
+	    }
+
+	    painter.end();
+
+	    // Save the image
+	    QString fileName = QString("%1/FinalStackedMaster.tiff").arg(dirPath);
+	    if (masterImage.save(fileName, "TIFF")) {
+		qDebug() << "Successfully created dummy stacked image:" << fileName;
+	    } else {
+		qDebug() << "Failed to save stacked image:" << fileName;
+	    }
+
+	    // Create some individual frame images
+	    for (int frame = 1; frame <= 3; ++frame) {
+		QString frameFileName = QString("%1/frame_%2.jpg").arg(dirPath).arg(frame);
+		if (masterImage.save(frameFileName, "JPEG", 90)) {
+		    qDebug() << "Created frame image:" << frameFileName;
+		}
+	    }
+	}
+
+	// List all created files for verification
+	qDebug() << "Verification - Files in" << tempDir << ":";
+	QDir tempDirObj(tempDir);
+	QStringList tempFiles = tempDirObj.entryList(QDir::Files);
+	for (const QString &file : tempFiles) {
+	    QFileInfo fileInfo(tempDirObj.absoluteFilePath(file));
+	    qDebug() << "  " << file << "(" << fileInfo.size() << "bytes)";
+	}
     }
     
 private:
