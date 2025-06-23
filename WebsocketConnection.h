@@ -38,7 +38,9 @@ private:
     QTimer *m_pingTimeoutTimer;  // Timeout for ping responses
     QTimer *m_autoPingTimer;     // Automatic ping sender
     bool m_waitingForPong;       // Track if we're waiting for pong response
-    
+    QByteArray m_pendingData;    // NEW: Store pending frame data
+    int m_pingCounter = 0;
+  
     void sendFrame(quint8 opcode, const QByteArray &payload, bool masked = false);
     void processFrame(const QByteArray &data);
 };

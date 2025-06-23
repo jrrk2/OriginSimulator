@@ -210,7 +210,7 @@ void CelestronOriginSimulator::handleHttpImageRequest(QTcpSocket *socket, const 
 
     qDebug() << "Extracted filename:" << fileName;
 
-    QString fullPath = QString("simulator_data/Images/Temp/%1").arg(fileName);
+    QString fullPath = QString("/Users/jonathan/OriginSimulator/simulator_data/Images/Temp/%1").arg(fileName);
     qDebug() << "Looking for file at:" << fullPath;
 
     QFile imageFile(fullPath);

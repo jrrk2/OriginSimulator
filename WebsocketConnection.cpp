@@ -64,8 +64,9 @@ void WebSocketConnection::sendAutomaticPing() {
         return;
     }
     
-    // Send ping with 30-byte payload like real Origin telescope
-    QByteArray pingPayload(30, 0);
+    // Format the ping payload to match IXWebSocket heartbeat format
+    QString heartbeatString = QString("ixwebsocket::heartbeat::5s::%1").arg(m_pingCounter++);
+    QByteArray pingPayload = heartbeatString.toUtf8();
     sendPingMessage(pingPayload);
 }
 
@@ -139,6 +140,7 @@ void WebSocketConnection::handleData() {
     processFrame(data);
 }
 
+// In WebSocketConnection::processFrame function
 void WebSocketConnection::processFrame(const QByteArray &data) {
     if (data.size() < 2) return;
     
@@ -169,12 +171,24 @@ void WebSocketConnection::processFrame(const QByteArray &data) {
         headerSize += 4; // Mask key
     }
     
-    if (data.size() < headerSize + payloadLength) return;
+    // FIX: Check if we have a complete frame
+    if (data.size() < headerSize + payloadLength) {
+        // We don't have a complete frame yet, store it for later
+        m_pendingData.append(data);
+        return;
+    }
     
-    QByteArray payload = data.mid(headerSize, payloadLength);
+    // If we have pending data from earlier, process it together
+    QByteArray frameData = data;
+    if (!m_pendingData.isEmpty()) {
+        frameData = m_pendingData + data;
+        m_pendingData.clear();
+    }
+    
+    QByteArray payload = frameData.mid(headerSize, payloadLength);
     
     if (masked && headerSize >= 6) {
-        QByteArray maskKey = data.mid(headerSize - 4, 4);
+        QByteArray maskKey = frameData.mid(headerSize - 4, 4);
         for (int i = 0; i < payload.size(); ++i) {
             payload[i] = payload[i] ^ maskKey[i % 4];
         }
@@ -186,8 +200,12 @@ void WebSocketConnection::processFrame(const QByteArray &data) {
             break;
         case 0x08: // Close frame
             qDebug() << "WebSocket close frame received";
-            stopPingCycle();
-            m_socket->disconnectFromHost();
+            // FIX: Don't stop ping cycle and don't disconnect - keep connection alive
+            //stopPingCycle();
+            //m_socket->disconnectFromHost();
+            
+            // Send a close frame back as acknowledgment but don't actually close
+            sendFrame(0x08, payload);
             break;
         case 0x09: // Ping frame (client sent us a ping)
             qDebug() << "WebSocket ping received from client, sending pong";
@@ -203,6 +221,12 @@ void WebSocketConnection::processFrame(const QByteArray &data) {
         default:
             qDebug() << "Unknown WebSocket frame opcode:" << opcode;
             break;
+    }
+    
+    // FIX: Process any remaining data (in case multiple frames were received)
+    if (frameData.size() > headerSize + payloadLength) {
+        QByteArray remainingData = frameData.mid(headerSize + payloadLength);
+        processFrame(remainingData);
     }
 }
 

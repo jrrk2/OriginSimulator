@@ -7,6 +7,8 @@
 
 class TelescopeState {
 public:
+    QString countryCode;
+  
     // Mount data (matches real Origin telescope values from pcapng)
     QString batteryLevel = "HIGH";
     double batteryVoltage = 10.38;

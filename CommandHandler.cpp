@@ -50,6 +50,36 @@ void CommandHandler::processCommand(const QJsonObject &obj, WebSocketConnection 
         handleSetFocuserBacklash(obj, wsConn, sequenceId, source, destination);
     } else if (command == "SetMode" && destination == "DewHeater") {
         handleSetDewHeaterMode(obj, wsConn, sequenceId, source, destination);
+    } else if (command == "GetSerialNumber" && destination == "FactoryCalibrationController") {
+        handleGetSerialNumber(obj, wsConn, sequenceId, source, destination);
+    } else if (command == "HasUpdateAvailable" && destination == "System") {
+        handleHasUpdateAvailable(obj, wsConn, sequenceId, source, destination);
+    } else if (command == "GetUpdateChannel" && destination == "System") {
+        handleGetUpdateChannel(obj, wsConn, sequenceId, source, destination);
+    } else if (command == "SetRegulatoryDomain" && destination == "Network") {
+        handleSetRegulatoryDomain(obj, wsConn, sequenceId, source, destination);
+    } else if (command == "HasInternetConnection" && destination == "Network") {
+        handleHasInternetConnection(obj, wsConn, sequenceId, source, destination);
+    } else if (command == "GetForceDirectConnect" && destination == "Network") {
+        handleGetForceDirectConnect(obj, wsConn, sequenceId, source, destination);
+    } else if (command == "GetCameraInfo" && destination == "Camera") {
+        handleGetCameraInfo(obj, wsConn, sequenceId, source, destination);
+    } else if (command == "GetSensors" && destination == "Environment") {
+        handleGetSensors(obj, wsConn, sequenceId, source, destination);
+    } else if (command == "GetBrightnessLevel" && destination == "LedRing") {
+        handleGetBrightnessLevel(obj, wsConn, sequenceId, source, destination);
+    } else if (command == "GetFocuserAdvancedSettings" && destination == "Focuser") {
+        handleGetFocuserAdvancedSettings(obj, wsConn, sequenceId, source, destination);
+    } else if (command == "GetMountConfig" && destination == "Mount") {
+        handleGetMountConfig(obj, wsConn, sequenceId, source, destination);
+    } else if (command == "GetPositionLimits" && destination == "Focuser") {
+        handleGetPositionLimits(obj, wsConn, sequenceId, source, destination);
+    } else if (command == "GetEnableManual" && destination == "LiveStream") {
+        handleGetEnableManual(obj, wsConn, sequenceId, source, destination);
+    } else if (command == "GetFilter" && destination == "Camera") {
+        handleGetFilter(obj, wsConn, sequenceId, source, destination);
+    } else if (command == "GetDirectConnectPassword" && destination == "Network") {
+        handleGetDirectConnectPassword(obj, wsConn, sequenceId, source, destination);
     } else {
         // Default response for unimplemented commands
         QJsonObject response;
@@ -382,6 +412,252 @@ void CommandHandler::handleSetDewHeaterMode(const QJsonObject &obj, WebSocketCon
     response["SequenceID"] = sequenceId;
     response["Source"] = destination;
     response["Type"] = "Response";
+    
+    sendJsonResponse(wsConn, response);
+}
+
+
+void CommandHandler::handleGetSerialNumber(const QJsonObject &obj, WebSocketConnection *wsConn, int sequenceId, const QString &source, const QString &destination) {
+    QJsonObject response;
+    response["Command"] = "GetSerialNumber";
+    response["Destination"] = source;
+    response["ErrorCode"] = 0;
+    response["ErrorMessage"] = "";
+    response["ExpiredAt"] = QDateTime::currentDateTime().toSecsSinceEpoch();
+    response["SequenceID"] = sequenceId;
+    response["Source"] = destination;
+    response["Type"] = "Response";
+    response["SerialNumber"] = "OTU140020"; // Example serial number
+    
+    sendJsonResponse(wsConn, response);
+}
+
+void CommandHandler::handleHasUpdateAvailable(const QJsonObject &obj, WebSocketConnection *wsConn, int sequenceId, const QString &source, const QString &destination) {
+    QJsonObject response;
+    response["Command"] = "HasUpdateAvailable";
+    response["Destination"] = source;
+    response["ErrorCode"] = 0;
+    response["ErrorMessage"] = "";
+    response["ExpiredAt"] = QDateTime::currentDateTime().toSecsSinceEpoch();
+    response["SequenceID"] = sequenceId;
+    response["Source"] = destination;
+    response["Type"] = "Response";
+    response["Available"] = false;
+    response["Version"] = "";
+    
+    sendJsonResponse(wsConn, response);
+}
+
+void CommandHandler::handleGetUpdateChannel(const QJsonObject &obj, WebSocketConnection *wsConn, int sequenceId, const QString &source, const QString &destination) {
+    QJsonObject response;
+    response["Command"] = "GetUpdateChannel";
+    response["Destination"] = source;
+    response["ErrorCode"] = 0;
+    response["ErrorMessage"] = "";
+    response["ExpiredAt"] = QDateTime::currentDateTime().toSecsSinceEpoch();
+    response["SequenceID"] = sequenceId;
+    response["Source"] = destination;
+    response["Type"] = "Response";
+    response["Channel"] = "Release";
+    
+    sendJsonResponse(wsConn, response);
+}
+
+void CommandHandler::handleSetRegulatoryDomain(const QJsonObject &obj, WebSocketConnection *wsConn, int sequenceId, const QString &source, const QString &destination) {
+    QString countryCode = obj["CountryCode"].toString();
+    m_telescopeState->countryCode = countryCode;
+    
+    QJsonObject response;
+    response["Command"] = "SetRegulatoryDomain";
+    response["Destination"] = source;
+    response["ErrorCode"] = 0;
+    response["ErrorMessage"] = "";
+    response["ExpiredAt"] = QDateTime::currentDateTime().toSecsSinceEpoch();
+    response["SequenceID"] = sequenceId;
+    response["Source"] = destination;
+    response["Type"] = "Response";
+    
+    sendJsonResponse(wsConn, response);
+}
+
+void CommandHandler::handleHasInternetConnection(const QJsonObject &obj, WebSocketConnection *wsConn, int sequenceId, const QString &source, const QString &destination) {
+    QJsonObject response;
+    response["Command"] = "HasInternetConnection";
+    response["Destination"] = source;
+    response["ErrorCode"] = 0;
+    response["ErrorMessage"] = "";
+    response["ExpiredAt"] = QDateTime::currentDateTime().toSecsSinceEpoch();
+    response["SequenceID"] = sequenceId;
+    response["Source"] = destination;
+    response["Type"] = "Response";
+    response["Connected"] = true;
+    
+    sendJsonResponse(wsConn, response);
+}
+
+void CommandHandler::handleGetForceDirectConnect(const QJsonObject &obj, WebSocketConnection *wsConn, int sequenceId, const QString &source, const QString &destination) {
+    QJsonObject response;
+    response["Command"] = "GetForceDirectConnect";
+    response["Destination"] = source;
+    response["ErrorCode"] = 0;
+    response["ErrorMessage"] = "";
+    response["ExpiredAt"] = QDateTime::currentDateTime().toSecsSinceEpoch();
+    response["SequenceID"] = sequenceId;
+    response["Source"] = destination;
+    response["Type"] = "Response";
+    response["ForceDirectConnect"] = false;
+    
+    sendJsonResponse(wsConn, response);
+}
+
+void CommandHandler::handleGetCameraInfo(const QJsonObject &obj, WebSocketConnection *wsConn, int sequenceId, const QString &source, const QString &destination) {
+    QJsonObject response;
+    response["Command"] = "GetCameraInfo";
+    response["Destination"] = source;
+    response["ErrorCode"] = 0;
+    response["ErrorMessage"] = "";
+    response["ExpiredAt"] = QDateTime::currentDateTime().toSecsSinceEpoch();
+    response["SequenceID"] = sequenceId;
+    response["Source"] = destination;
+    response["Type"] = "Response";
+    response["ModelName"] = "Origin Camera";
+    response["SensorWidth"] = 14.8;
+    response["SensorHeight"] = 11.1;
+    response["PixelSize"] = 4.63;
+    response["EffectiveFocalLength"] = 700;
+    
+    sendJsonResponse(wsConn, response);
+}
+
+void CommandHandler::handleGetSensors(const QJsonObject &obj, WebSocketConnection *wsConn, int sequenceId, const QString &source, const QString &destination) {
+    QJsonObject response;
+    response["Command"] = "GetSensors";
+    response["Destination"] = source;
+    response["ErrorCode"] = 0;
+    response["ErrorMessage"] = "";
+    response["ExpiredAt"] = QDateTime::currentDateTime().toSecsSinceEpoch();
+    response["SequenceID"] = sequenceId;
+    response["Source"] = destination;
+    response["Type"] = "Response";
+    
+    QJsonArray sensors;
+    sensors.append("AMBIENT_TEMPERATURE");
+    sensors.append("HUMIDITY");
+    sensors.append("DEW_POINT");
+    sensors.append("FRONT_CELL_TEMPERATURE");
+    sensors.append("CPU_TEMPERATURE");
+    sensors.append("CAMERA_TEMPERATURE");
+    response["Sensors"] = sensors;
+    
+    sendJsonResponse(wsConn, response);
+}
+
+void CommandHandler::handleGetBrightnessLevel(const QJsonObject &obj, WebSocketConnection *wsConn, int sequenceId, const QString &source, const QString &destination) {
+    QJsonObject response;
+    response["Command"] = "GetBrightnessLevel";
+    response["Destination"] = source;
+    response["ErrorCode"] = 0;
+    response["ErrorMessage"] = "";
+    response["ExpiredAt"] = QDateTime::currentDateTime().toSecsSinceEpoch();
+    response["SequenceID"] = sequenceId;
+    response["Source"] = destination;
+    response["Type"] = "Response";
+    response["Level"] = 50;
+    
+    sendJsonResponse(wsConn, response);
+}
+
+void CommandHandler::handleGetFocuserAdvancedSettings(const QJsonObject &obj, WebSocketConnection *wsConn, int sequenceId, const QString &source, const QString &destination) {
+    QJsonObject response;
+    response["Command"] = "GetFocuserAdvancedSettings";
+    response["Destination"] = source;
+    response["ErrorCode"] = 0;
+    response["ErrorMessage"] = "";
+    response["ExpiredAt"] = QDateTime::currentDateTime().toSecsSinceEpoch();
+    response["SequenceID"] = sequenceId;
+    response["Source"] = destination;
+    response["Type"] = "Response";
+    response["BacklashSteps"] = 255;
+    response["DefaultSpeed"] = 250;
+    response["DefaultAcceleration"] = 800;
+    response["DirectionToggleDelayMs"] = 500;
+    
+    sendJsonResponse(wsConn, response);
+}
+
+void CommandHandler::handleGetMountConfig(const QJsonObject &obj, WebSocketConnection *wsConn, int sequenceId, const QString &source, const QString &destination) {
+    QJsonObject response;
+    response["Command"] = "GetMountConfig";
+    response["Destination"] = source;
+    response["ErrorCode"] = 0;
+    response["ErrorMessage"] = "";
+    response["ExpiredAt"] = QDateTime::currentDateTime().toSecsSinceEpoch();
+    response["SequenceID"] = sequenceId;
+    response["Source"] = destination;
+    response["Type"] = "Response";
+    response["MaximumSpeed"] = 3.0;
+    response["SlewSettleTime"] = 1.0;
+    
+    sendJsonResponse(wsConn, response);
+}
+
+void CommandHandler::handleGetPositionLimits(const QJsonObject &obj, WebSocketConnection *wsConn, int sequenceId, const QString &source, const QString &destination) {
+    QJsonObject response;
+    response["Command"] = "GetPositionLimits";
+    response["Destination"] = source;
+    response["ErrorCode"] = 0;
+    response["ErrorMessage"] = "";
+    response["ExpiredAt"] = QDateTime::currentDateTime().toSecsSinceEpoch();
+    response["SequenceID"] = sequenceId;
+    response["Source"] = destination;
+    response["Type"] = "Response";
+    response["MaximumPosition"] = 40000;
+    response["MinimumPosition"] = 0;
+    
+    sendJsonResponse(wsConn, response);
+}
+
+void CommandHandler::handleGetEnableManual(const QJsonObject &obj, WebSocketConnection *wsConn, int sequenceId, const QString &source, const QString &destination) {
+    QJsonObject response;
+    response["Command"] = "GetEnableManual";
+    response["Destination"] = source;
+    response["ErrorCode"] = 0;
+    response["ErrorMessage"] = "";
+    response["ExpiredAt"] = QDateTime::currentDateTime().toSecsSinceEpoch();
+    response["SequenceID"] = sequenceId;
+    response["Source"] = destination;
+    response["Type"] = "Response";
+    response["EnableManual"] = true;
+    
+    sendJsonResponse(wsConn, response);
+}
+
+void CommandHandler::handleGetFilter(const QJsonObject &obj, WebSocketConnection *wsConn, int sequenceId, const QString &source, const QString &destination) {
+    QJsonObject response;
+    response["Command"] = "GetFilter";
+    response["Destination"] = source;
+    response["ErrorCode"] = 0;
+    response["ErrorMessage"] = "";
+    response["ExpiredAt"] = QDateTime::currentDateTime().toSecsSinceEpoch();
+    response["SequenceID"] = sequenceId;
+    response["Source"] = destination;
+    response["Type"] = "Response";
+    response["Filter"] = "Clear";
+    
+    sendJsonResponse(wsConn, response);
+}
+
+void CommandHandler::handleGetDirectConnectPassword(const QJsonObject &obj, WebSocketConnection *wsConn, int sequenceId, const QString &source, const QString &destination) {
+    QJsonObject response;
+    response["Command"] = "GetDirectConnectPassword";
+    response["Destination"] = source;
+    response["ErrorCode"] = 0;
+    response["ErrorMessage"] = "";
+    response["ExpiredAt"] = QDateTime::currentDateTime().toSecsSinceEpoch();
+    response["SequenceID"] = sequenceId;
+    response["Source"] = destination;
+    response["Type"] = "Response";
+    response["Password"] = "celestron"; // Default password
     
     sendJsonResponse(wsConn, response);
 }
