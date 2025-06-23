@@ -37,6 +37,9 @@ private slots:
     void onWebSocketDisconnected();
     void processWebSocketCommand(const QString &message);
     void handleWebSocketPing(const QByteArray &payload);
+    void handleWebSocketPong(const QByteArray &payload);  // NEW
+    void handleWebSocketTimeout();                        // NEW
+    void checkConnectionHealth();                         // NEW
 
 private:
     // Core components
@@ -55,6 +58,7 @@ private:
     QTimer *m_updateTimer;
     QTimer *m_slewTimer;
     QTimer *m_imagingTimer;
+    QTimer *m_connectionHealthTimer;
 
     // Absolute paths for image serving (NEW)
     QString m_absoluteTempDir;

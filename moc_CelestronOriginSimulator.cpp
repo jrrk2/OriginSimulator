@@ -52,7 +52,10 @@ template <> constexpr inline auto CelestronOriginSimulator::qt_create_metaobject
         "processWebSocketCommand",
         "message",
         "handleWebSocketPing",
-        "payload"
+        "payload",
+        "handleWebSocketPong",
+        "handleWebSocketTimeout",
+        "checkConnectionHealth"
     };
 
     QtMocHelpers::UintData qt_methods {
@@ -80,6 +83,14 @@ template <> constexpr inline auto CelestronOriginSimulator::qt_create_metaobject
         QtMocHelpers::SlotData<void(const QByteArray &)>(13, 2, QMC::AccessPrivate, QMetaType::Void, {{
             { QMetaType::QByteArray, 14 },
         }}),
+        // Slot 'handleWebSocketPong'
+        QtMocHelpers::SlotData<void(const QByteArray &)>(15, 2, QMC::AccessPrivate, QMetaType::Void, {{
+            { QMetaType::QByteArray, 14 },
+        }}),
+        // Slot 'handleWebSocketTimeout'
+        QtMocHelpers::SlotData<void()>(16, 2, QMC::AccessPrivate, QMetaType::Void),
+        // Slot 'checkConnectionHealth'
+        QtMocHelpers::SlotData<void()>(17, 2, QMC::AccessPrivate, QMetaType::Void),
     };
     QtMocHelpers::UintData qt_properties {
     };
@@ -112,6 +123,9 @@ void CelestronOriginSimulator::qt_static_metacall(QObject *_o, QMetaObject::Call
         case 6: _t->onWebSocketDisconnected(); break;
         case 7: _t->processWebSocketCommand((*reinterpret_cast< std::add_pointer_t<QString>>(_a[1]))); break;
         case 8: _t->handleWebSocketPing((*reinterpret_cast< std::add_pointer_t<QByteArray>>(_a[1]))); break;
+        case 9: _t->handleWebSocketPong((*reinterpret_cast< std::add_pointer_t<QByteArray>>(_a[1]))); break;
+        case 10: _t->handleWebSocketTimeout(); break;
+        case 11: _t->checkConnectionHealth(); break;
         default: ;
         }
     }
@@ -148,14 +162,14 @@ int CelestronOriginSimulator::qt_metacall(QMetaObject::Call _c, int _id, void **
     if (_id < 0)
         return _id;
     if (_c == QMetaObject::InvokeMetaMethod) {
-        if (_id < 9)
+        if (_id < 12)
             qt_static_metacall(this, _c, _id, _a);
-        _id -= 9;
+        _id -= 12;
     }
     if (_c == QMetaObject::RegisterMethodArgumentMetaType) {
-        if (_id < 9)
+        if (_id < 12)
             qt_static_metacall(this, _c, _id, _a);
-        _id -= 9;
+        _id -= 12;
     }
     return _id;
 }

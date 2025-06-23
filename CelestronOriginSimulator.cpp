@@ -172,27 +172,42 @@ void CelestronOriginSimulator::handleWebSocketUpgrade(QTcpSocket *socket, const 
         m_webSocketClients.append(wsConn);
         m_statusSender->addWebSocketClient(wsConn);
         
+        // CRITICAL: Set up all signal connections BEFORE starting ping cycle
         connect(wsConn, &WebSocketConnection::textMessageReceived, 
                 this, &CelestronOriginSimulator::processWebSocketCommand);
+        
+        // CRITICAL: Handle ping/pong properly
         connect(wsConn, &WebSocketConnection::pingReceived,
                 this, &CelestronOriginSimulator::handleWebSocketPing);
+        
+        // CRITICAL: Handle pong responses  
+        connect(wsConn, &WebSocketConnection::pongReceived,
+                this, &CelestronOriginSimulator::handleWebSocketPong);
+        
+        // CRITICAL: Handle ping timeouts
+        connect(wsConn, &WebSocketConnection::pingTimeout,
+                this, &CelestronOriginSimulator::handleWebSocketTimeout);
+        
         connect(wsConn, &WebSocketConnection::disconnected, 
                 this, &CelestronOriginSimulator::onWebSocketDisconnected);
         
         qDebug() << "WebSocket connection established for telescope control";
         
-        // Send initial status updates
-        QTimer::singleShot(500, this, [this, wsConn]() {
-            m_statusSender->sendMountStatus(wsConn);
-            m_statusSender->sendFocuserStatus(wsConn);
-            m_statusSender->sendCameraParams(wsConn);
-            m_statusSender->sendDiskStatus(wsConn);
-            m_statusSender->sendTaskControllerStatus(wsConn);
-            m_statusSender->sendEnvironmentStatus(wsConn);
-            m_statusSender->sendDewHeaterStatus(wsConn);
-            m_statusSender->sendOrientationStatus(wsConn);
+        // Send initial status updates after a brief delay
+        QTimer::singleShot(1000, this, [this, wsConn]() {
+            if (m_webSocketClients.contains(wsConn)) {
+                m_statusSender->sendMountStatus(wsConn);
+                m_statusSender->sendFocuserStatus(wsConn);
+                m_statusSender->sendCameraParams(wsConn);
+                m_statusSender->sendDiskStatus(wsConn);
+                m_statusSender->sendTaskControllerStatus(wsConn);
+                m_statusSender->sendEnvironmentStatus(wsConn);
+                m_statusSender->sendDewHeaterStatus(wsConn);
+                m_statusSender->sendOrientationStatus(wsConn);
+            }
         });
     } else {
+        qDebug() << "WebSocket handshake failed";
         sendHttpResponse(socket, 400, "text/plain", "Bad WebSocket Request");
     }
 }
@@ -371,11 +386,6 @@ void CelestronOriginSimulator::processWebSocketCommand(const QString &message) {
     }
 }
 
-void CelestronOriginSimulator::handleWebSocketPing(const QByteArray &payload) {
-    qDebug() << "WebSocket ping received with payload:" << payload;
-    // The WebSocketConnection handles sending the pong automatically
-}
-
 void CelestronOriginSimulator::onWebSocketDisconnected() {
     WebSocketConnection *wsConn = qobject_cast<WebSocketConnection*>(sender());
     if (wsConn) {
@@ -405,68 +415,6 @@ void CelestronOriginSimulator::sendBroadcast() {
             
             qDebug() << "Sent broadcast:" << broadcastMessage;
         }
-    }
-}
-
-// Enhanced timing method in CelestronOriginSimulator.cpp
-// Add this method to make the simulator behave more like the real telescope
-
-void CelestronOriginSimulator::sendStatusUpdates() {
-    // Update time
-    m_telescopeState->dateTime = QDateTime::currentDateTime();
-    
-    // Send status updates with realistic intervals matching real telescope behavior
-    static int updateCounter = 0;
-    updateCounter++;
-    
-    // Mount status - every second (like real telescope)
-    m_statusSender->sendMountStatusToAll();
-    
-    // Focuser status - every ~2-3 seconds (varies in real telescope)
-    if (updateCounter % 2 == 0 || updateCounter % 3 == 0) {
-        m_statusSender->sendFocuserStatusToAll();
-    }
-    
-    // Camera parameters - every ~3 seconds  
-    if (updateCounter % 3 == 0) {
-        m_statusSender->sendCameraParamsToAll();
-    }
-    
-    // New image notifications - every ~3 seconds (matches real telescope)
-    if (updateCounter % 3 == 0) {
-        m_telescopeState->sequenceNumber++;
-        m_telescopeState->fileLocation = m_telescopeState->getNextImageFile();
-        m_statusSender->sendNewImageReadyToAll();
-    }
-    
-    // Environmental data - every ~10 seconds (less frequent)
-    if (updateCounter % 10 == 0) {
-        m_statusSender->sendEnvironmentStatusToAll();
-    }
-    
-    // Disk status - every ~10 seconds
-    if (updateCounter % 10 == 0) {
-        m_statusSender->sendDiskStatusToAll();
-    }
-    
-    // Dew heater status - every ~15 seconds (occasional)
-    if (updateCounter % 15 == 0) {
-        m_statusSender->sendDewHeaterStatusToAll();
-    }
-    
-    // Orientation sensor - every ~30 seconds (sporadic like real telescope)
-    if (updateCounter % 30 == 0) {
-        m_statusSender->sendOrientationStatusToAll();
-    }
-    
-    // Task controller status - every ~5 seconds
-    if (updateCounter % 5 == 0) {
-        m_statusSender->sendTaskControllerStatusToAll();
-    }
-    
-    // Reset counter to prevent overflow
-    if (updateCounter > 1000) {
-        updateCounter = 0;
     }
 }
 
@@ -811,4 +759,107 @@ void CelestronOriginSimulator::createDummyImages() {
     qDebug() << "Images created in Application Support directory:" << appSupportDir;
     qDebug() << "Location: ~/Library/Application Support/OriginSimulator/";
     qDebug() << "To view in Finder: open ~/Library/Application\\ Support/OriginSimulator/";
+}
+
+
+// CRITICAL: Fix the status update timing to avoid blocking ping/pong
+// Replace sendStatusUpdates method with this non-blocking version:
+
+void CelestronOriginSimulator::sendStatusUpdates() {
+    // Update time
+    m_telescopeState->dateTime = QDateTime::currentDateTime();
+    
+    // CRITICAL: Use QueuedConnection to avoid blocking the event loop
+    static int updateCounter = 0;
+    updateCounter++;
+    
+    // Send updates in smaller batches to prevent blocking
+    if (updateCounter % 1 == 0) {
+        // Every second - critical updates only
+        QTimer::singleShot(0, this, [this]() {
+            m_statusSender->sendMountStatusToAll();
+        });
+    }
+    
+    if (updateCounter % 2 == 0) {
+        QTimer::singleShot(5, this, [this]() {
+            m_statusSender->sendFocuserStatusToAll();
+        });
+    }
+    
+    if (updateCounter % 3 == 0) {
+        QTimer::singleShot(10, this, [this]() {
+            m_statusSender->sendCameraParamsToAll();
+            m_telescopeState->sequenceNumber++;
+            m_telescopeState->fileLocation = m_telescopeState->getNextImageFile();
+            m_statusSender->sendNewImageReadyToAll();
+        });
+    }
+    
+    // Less frequent updates with longer delays
+    if (updateCounter % 10 == 0) {
+        QTimer::singleShot(15, this, [this]() {
+            m_statusSender->sendEnvironmentStatusToAll();
+            m_statusSender->sendDiskStatusToAll();
+        });
+    }
+    
+    if (updateCounter % 15 == 0) {
+        QTimer::singleShot(20, this, [this]() {
+            m_statusSender->sendDewHeaterStatusToAll();
+        });
+    }
+    
+    if (updateCounter % 30 == 0) {
+        QTimer::singleShot(25, this, [this]() {
+            m_statusSender->sendOrientationStatusToAll();
+        });
+    }
+    
+    if (updateCounter % 5 == 0) {
+        QTimer::singleShot(30, this, [this]() {
+            m_statusSender->sendTaskControllerStatusToAll();
+        });
+    }
+    
+    // Reset counter to prevent overflow
+    if (updateCounter > 1000) {
+        updateCounter = 0;
+    }
+}
+
+// CRITICAL: Add connection monitoring
+// Add this method to monitor connection health:
+
+void CelestronOriginSimulator::checkConnectionHealth() {
+    qDebug() << "Active WebSocket connections:" << m_webSocketClients.size();
+    
+    for (WebSocketConnection *wsConn : m_webSocketClients) {
+        // Check if connection is still alive
+        // We don't need to do anything here - the ping/pong mechanism handles it
+    }
+}
+
+// Add these new slot methods to CelestronOriginSimulator class:
+
+void CelestronOriginSimulator::handleWebSocketPing(const QByteArray &payload) {
+    WebSocketConnection *wsConn = qobject_cast<WebSocketConnection*>(sender());
+    qDebug() << "WebSocket ping received from client, payload size:" << payload.size();
+    // The WebSocketConnection automatically sends pong, we just log it here
+}
+
+void CelestronOriginSimulator::handleWebSocketPong(const QByteArray &payload) {
+    WebSocketConnection *wsConn = qobject_cast<WebSocketConnection*>(sender());
+    qDebug() << "WebSocket pong received from client, payload size:" << payload.size();
+    // Client responded to our ping successfully
+}
+
+void CelestronOriginSimulator::handleWebSocketTimeout() {
+    WebSocketConnection *wsConn = qobject_cast<WebSocketConnection*>(sender());
+    qDebug() << "WebSocket ping timeout occurred - client not responding";
+    
+    if (wsConn && m_webSocketClients.contains(wsConn)) {
+        // Remove from active clients but don't delete yet - let disconnected signal handle cleanup
+        m_statusSender->removeWebSocketClient(wsConn);
+    }
 }

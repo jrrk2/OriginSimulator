@@ -13,36 +13,41 @@ public:
     
     void sendTextMessage(const QString &message);
     void sendPongMessage(const QByteArray &payload);
-    void sendPingMessage(const QByteArray &payload = QByteArray(30, 0)); // Origin sends 30-byte pings
+    void sendPingMessage(const QByteArray &payload = QByteArray());
     bool performHandshake(const QByteArray &requestData);
     
     // Start automatic ping cycle (telescope initiates pings)
     void startPingCycle(int intervalMs = 5000);
     void stopPingCycle();
+    void initializePingCycle(); // NEW: Proper initialization
 
 signals:
     void textMessageReceived(const QString &message);
     void pingReceived(const QByteArray &payload);
-    void pongReceived(const QByteArray &payload); // New: handle pong responses
+    void pongReceived(const QByteArray &payload);
     void disconnected();
-    void pingTimeout(); // New: when client doesn't respond to our ping
+    void pingTimeout();
 
 private slots:
     void handleData();
     void onPingTimeout();
-    void sendAutomaticPing(); // New: send periodic pings like real telescope
+    void sendAutomaticPing();
 
 private:
     QTcpSocket *m_socket;
     bool m_handshakeComplete;
-    QTimer *m_pingTimeoutTimer;  // Timeout for ping responses
-    QTimer *m_autoPingTimer;     // Automatic ping sender
-    bool m_waitingForPong;       // Track if we're waiting for pong response
-    QByteArray m_pendingData;    // NEW: Store pending frame data
+    QTimer *m_pingTimeoutTimer;
+    QTimer *m_autoPingTimer;
+    bool m_waitingForPong;
+    QByteArray m_pendingData;    // For handling incomplete frames
     int m_pingCounter = 0;
+    int m_missedPongCount = 0;
   
     void sendFrame(quint8 opcode, const QByteArray &payload, bool masked = false);
     void processFrame(const QByteArray &data);
+    void debugFrame(const QByteArray &data, const QString &direction); // NEW: Debug helper
+    void resetPingState();
+    void verifyTimerSetup();
 };
 
 #endif // WEBSOCKETCONNECTION_H

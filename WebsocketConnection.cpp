@@ -1,22 +1,7 @@
 #include "WebSocketConnection.h"
 #include <QCryptographicHash>
 #include <QDebug>
-
-WebSocketConnection::WebSocketConnection(QTcpSocket *socket, QObject *parent) 
-    : QObject(parent), m_socket(socket), m_handshakeComplete(false), m_waitingForPong(false) {
-    connect(m_socket, &QTcpSocket::readyRead, this, &WebSocketConnection::handleData);
-    connect(m_socket, &QTcpSocket::disconnected, this, &WebSocketConnection::disconnected);
-    
-    // Set up ping timeout timer (for when we send pings and expect pongs)
-    m_pingTimeoutTimer = new QTimer(this);
-    m_pingTimeoutTimer->setSingleShot(true);
-    m_pingTimeoutTimer->setInterval(10000); // 10 second timeout for pong response
-    connect(m_pingTimeoutTimer, &QTimer::timeout, this, &WebSocketConnection::onPingTimeout);
-    
-    // Set up automatic ping timer (telescope sends pings every 5 seconds)
-    m_autoPingTimer = new QTimer(this);
-    connect(m_autoPingTimer, &QTimer::timeout, this, &WebSocketConnection::sendAutomaticPing);
-}
+#include <QTime>
 
 void WebSocketConnection::sendTextMessage(const QString &message) {
     if (!m_handshakeComplete || !m_socket) return;
@@ -46,8 +31,12 @@ void WebSocketConnection::startPingCycle(int intervalMs) {
         m_autoPingTimer->stop();
     }
     m_autoPingTimer->setInterval(intervalMs);
+    m_autoPingTimer->setSingleShot(false); // CRITICAL: Must be repeating!
+    
+    connect(m_autoPingTimer, &QTimer::timeout, this, &WebSocketConnection::sendAutomaticPing, Qt::UniqueConnection);
+    
     m_autoPingTimer->start();
-    qDebug() << "Started automatic ping cycle every" << intervalMs << "ms";
+    qDebug() << "Started CONTINUOUS ping cycle every" << intervalMs << "ms";
 }
 
 void WebSocketConnection::stopPingCycle() {
@@ -81,6 +70,8 @@ void WebSocketConnection::sendFrame(quint8 opcode, const QByteArray &payload, bo
     m_socket->write(frame);
 }
 
+// In WebSocketConnection.cpp, make sure your performHandshake method includes this:
+
 bool WebSocketConnection::performHandshake(const QByteArray &requestData) {
     QString request = QString::fromUtf8(requestData);
     QStringList lines = request.split("\r\n");
@@ -112,9 +103,15 @@ bool WebSocketConnection::performHandshake(const QByteArray &requestData) {
     m_socket->write(response.toUtf8());
     m_handshakeComplete = true;
     
-    // Start the ping cycle once handshake is complete (like real telescope)
+    // CRITICAL: Start ping cycle immediately and ensure it continues
     QTimer::singleShot(1000, this, [this]() {
-        startPingCycle(5000); // Start pinging every 5 seconds
+        if (m_handshakeComplete && m_socket && m_socket->state() == QAbstractSocket::ConnectedState) {
+            qDebug() << "Starting continuous ping cycle every 5 seconds";
+            startPingCycle(5000); // This should create a repeating timer
+            
+            // Send first ping immediately
+            QTimer::singleShot(100, this, &WebSocketConnection::sendAutomaticPing);
+        }
     });
     
     return true;
@@ -200,11 +197,18 @@ void WebSocketConnection::processFrame(const QByteArray &data) {
             emit pingReceived(payload);
             break;
         case 0x0A: // Pong frame (client responded to our ping)
-            qDebug() << "WebSocket pong received from client";
-            m_pingTimeoutTimer->stop();
+            qDebug() << "Pong received at" << QTime::currentTime().toString("hh:mm:ss.zzz");
+            
+            if (m_pingTimeoutTimer->isActive()) {
+                m_pingTimeoutTimer->stop();
+            }
             m_waitingForPong = false;
+            
+            // Reset the missed pong counter since we got a response
+            m_missedPongCount = 0;
+            
             emit pongReceived(payload);
-            break;
+	    break;
         default:
             qDebug() << "Unknown WebSocket frame opcode:" << opcode;
             break;
@@ -219,19 +223,25 @@ void WebSocketConnection::processFrame(const QByteArray &data) {
 // Enhanced WebSocketConnection to match real telescope ping/pong behavior
 // Replace the sendAutomaticPing method with this more realistic version:
 
+// CRITICAL FIX: Update sendAutomaticPing method in WebSocketConnection.cpp
+// The issue is that the ping cycle stops after receiving a pong
+// Replace your sendAutomaticPing method with this version:
+
 void WebSocketConnection::sendAutomaticPing() {
-    // Don't send another ping if we're still waiting for a pong
-    if (m_waitingForPong) {
-        qDebug() << "Skipping ping - still waiting for pong response";
+    // CRITICAL: Don't skip pings - the client expects them every 5 seconds regardless
+    // The original code had: if (m_waitingForPong) return; 
+    // This is WRONG - we must keep pinging even if no pong was received
+    
+    if (!m_handshakeComplete || !m_socket || m_socket->state() != QAbstractSocket::ConnectedState) {
+        qDebug() << "Cannot send ping - connection not ready";
         return;
     }
     
     // Format the ping payload to match real Origin telescope exactly
-    // Real telescope sends: "ixwebsocket::heartbeat::5s::N" where N increments
-    QString heartbeatString = QString("ixwebsocket::heartbeat::5s::%1").arg(m_pingCounter++);
+    QString heartbeatString = QString("ixwebsocket::heartbeat::5s::%1").arg(m_pingCounter);
     QByteArray pingPayload = heartbeatString.toUtf8();
     
-    // Pad to exactly 29 bytes like real telescope (real telescope sends 29-byte pings)
+    // Pad to exactly 29 bytes like real telescope
     while (pingPayload.size() < 29) {
         pingPayload.append('\0');
     }
@@ -239,29 +249,111 @@ void WebSocketConnection::sendAutomaticPing() {
         pingPayload = pingPayload.left(29);
     }
     
+    qDebug() << "Sending automatic ping:" << heartbeatString << "counter:" << m_pingCounter;
+    
+    // Send the ping
     sendPingMessage(pingPayload);
-    qDebug() << "Sent realistic Origin ping:" << heartbeatString;
+    m_pingCounter++;
+    
+    // CRITICAL: Reset any previous timeout and start a new one
+    if (m_pingTimeoutTimer->isActive()) {
+        m_pingTimeoutTimer->stop();
+    }
+    m_waitingForPong = true;
+    m_pingTimeoutTimer->start(10000); // 10 second timeout for this specific ping
 }
 
-// Also enhance the ping timeout handling to match real telescope behavior:
 void WebSocketConnection::onPingTimeout() {
-    qDebug() << "WebSocket ping timeout - client didn't respond to ping within 10 seconds";
+    qDebug() << "Ping timeout for ping counter:" << (m_pingCounter - 1);
+    
+    // Don't disconnect immediately - real telescope is more tolerant
     m_waitingForPong = false;
     
-    // Send close frame with ping timeout status (code 1011 like real telescope)
-    QByteArray closePayload;
-    closePayload.append((1011 >> 8) & 0xFF); // Status code 1011 (Internal Error)
-    closePayload.append(1011 & 0xFF);
-    closePayload.append("Ping timeout"); // Exact message from real telescope
+    // Increment missed pong counter
+    m_missedPongCount++;
     
-    sendFrame(0x08, closePayload); // Close frame
-    stopPingCycle();
+    qDebug() << "Missed consecutive pongs:" << m_missedPongCount;
+    
+    // Only disconnect after missing 2 consecutive pongs
+    if (m_missedPongCount >= 2) {
+        qDebug() << "Too many missed pongs, disconnecting client";
+        
+        QByteArray closePayload;
+        closePayload.append(char(1011 >> 8));
+        closePayload.append(char(1011 & 0xFF));
+        closePayload.append("Ping timeout");
+        
+        sendFrame(0x08, closePayload);
+        stopPingCycle();
+        
+        QTimer::singleShot(1000, this, [this]() {
+            if (m_socket && m_socket->state() == QAbstractSocket::ConnectedState) {
+                m_socket->disconnectFromHost();
+            }
+        });
+        
+        // Reset counter for potential future connections
+        m_missedPongCount = 0;
+    }
+    
     emit pingTimeout();
+}
+
+// Also update the constructor to initialize the new member:
+WebSocketConnection::WebSocketConnection(QTcpSocket *socket, QObject *parent) 
+    : QObject(parent), m_socket(socket), m_handshakeComplete(false), 
+      m_waitingForPong(false), m_pingCounter(0), m_missedPongCount(0) {
     
-    // Don't immediately disconnect - real telescope keeps trying
-    QTimer::singleShot(2000, this, [this]() {
-        if (m_socket && m_socket->state() == QAbstractSocket::ConnectedState) {
-            m_socket->disconnectFromHost();
-        }
-    });
+    // Connect socket signals
+    connect(m_socket, &QTcpSocket::readyRead, this, &WebSocketConnection::handleData);
+    connect(m_socket, &QTcpSocket::disconnected, this, &WebSocketConnection::disconnected);
+    
+    // Initialize ping timeout timer
+    m_pingTimeoutTimer = new QTimer(this);
+    m_pingTimeoutTimer->setSingleShot(true);
+    m_pingTimeoutTimer->setInterval(8000);
+    connect(m_pingTimeoutTimer, &QTimer::timeout, this, &WebSocketConnection::onPingTimeout);
+    
+    // Initialize auto ping timer  
+    m_autoPingTimer = new QTimer(this);
+    m_autoPingTimer->setSingleShot(false);
+    
+    qDebug() << "WebSocketConnection created, timers and counters initialized";
+}
+
+// Add a method to reset the connection state when needed:
+void WebSocketConnection::resetPingState() {
+    m_pingCounter = 0;
+    m_missedPongCount = 0;
+    m_waitingForPong = false;
+    
+    if (m_pingTimeoutTimer->isActive()) {
+        m_pingTimeoutTimer->stop();
+    }
+    
+    qDebug() << "Ping state reset";
+}
+
+// Update the verifyTimerSetup method to include the new member:
+void WebSocketConnection::verifyTimerSetup() {
+    qDebug() << "=== Timer Verification ===";
+    qDebug() << "Auto ping timer exists:" << (m_autoPingTimer != nullptr);
+    if (m_autoPingTimer) {
+        qDebug() << "Auto ping timer active:" << m_autoPingTimer->isActive();
+        qDebug() << "Auto ping timer interval:" << m_autoPingTimer->interval();
+        qDebug() << "Auto ping timer single shot:" << m_autoPingTimer->isSingleShot();
+    }
+    
+    qDebug() << "Ping timeout timer exists:" << (m_pingTimeoutTimer != nullptr);
+    if (m_pingTimeoutTimer) {
+        qDebug() << "Ping timeout timer active:" << m_pingTimeoutTimer->isActive();
+        qDebug() << "Ping timeout timer interval:" << m_pingTimeoutTimer->interval();
+    }
+    
+    qDebug() << "Handshake complete:" << m_handshakeComplete;
+    qDebug() << "Socket state:" << (m_socket ? m_socket->state() : -1);
+    qDebug() << "Ping counter:" << m_pingCounter;
+    qDebug() << "Missed pong count:" << m_missedPongCount;
+    qDebug() << "Waiting for pong:" << m_waitingForPong;
+    qDebug() << "========================";
 }
