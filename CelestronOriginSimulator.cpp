@@ -510,14 +510,22 @@ void CelestronOriginSimulator::updateImaging() {
     }
 }
 
-// Enhanced image creation method for CelestronOriginSimulator.cpp
-// Replace the createDummyImages method with this more realistic version:
+// Enhanced image creation method using macOS Application Support directory
+// Replace the createDummyImages method with this version:
 
 void CelestronOriginSimulator::createDummyImages() {
-    // Create directory structure
-    QString tempDir = "simulator_data/Images/Temp";
-    QString astroDir = "simulator_data/Images/Astrophotography";
+    // Create Application Support directory structure (macOS standard)
+    QString homeDir = QDir::homePath();
+    QString appSupportDir = QDir(homeDir).absoluteFilePath("Library/Application Support/OriginSimulator");
+    QString tempDir = QDir(appSupportDir).absoluteFilePath("Images/Temp");
+    QString astroDir = QDir(appSupportDir).absoluteFilePath("Images/Astrophotography");
 
+    qDebug() << "Home directory:" << homeDir;
+    qDebug() << "Application Support directory:" << appSupportDir;
+    qDebug() << "Live images directory:" << tempDir;
+    qDebug() << "Astrophotography directory:" << astroDir;
+
+    // Create the directory structure
     if (!QDir().mkpath(tempDir)) {
         qDebug() << "Failed to create directory:" << tempDir;
         return;
@@ -527,6 +535,10 @@ void CelestronOriginSimulator::createDummyImages() {
         qDebug() << "Failed to create directory:" << astroDir;
         return;
     }
+
+    // Store the absolute paths for later use in HTTP serving
+    m_absoluteTempDir = tempDir;
+    m_absoluteAstroDir = astroDir;
 
     qDebug() << "Creating realistic astronomy images in:" << tempDir;
 
@@ -630,8 +642,8 @@ void CelestronOriginSimulator::createDummyImages() {
 
         painter.end();
 
-        // Save the image
-        QString fileName = QString("%1/%2.jpg").arg(tempDir).arg(i);
+        // Save the image with absolute path
+        QString fileName = QDir(tempDir).absoluteFilePath(QString("%1.jpg").arg(i));
 
         if (image.save(fileName, "JPEG", 95)) {
             qDebug() << "Successfully created realistic astronomy image:" << fileName;
@@ -650,7 +662,7 @@ void CelestronOriginSimulator::createDummyImages() {
 
     // Create realistic astrophotography directories and images
     for (const QString &target : m_telescopeState->astrophotographyDirs) {
-        QString dirPath = QString("%1/%2").arg(astroDir).arg(target);
+        QString dirPath = QDir(astroDir).absoluteFilePath(target);
         if (!QDir().mkpath(dirPath)) {
             qDebug() << "Failed to create astrophotography directory:" << dirPath;
             continue;
@@ -750,8 +762,8 @@ void CelestronOriginSimulator::createDummyImages() {
 
         painter.end();
 
-        // Save the deep space image
-        QString masterFileName = QString("%1/FinalStackedMaster.tiff").arg(dirPath);
+        // Save the deep space image with absolute path
+        QString masterFileName = QDir(dirPath).absoluteFilePath("FinalStackedMaster.tiff");
         if (deepSpaceImage.save(masterFileName, "TIFF")) {
             qDebug() << "Successfully created realistic deep-space image:" << masterFileName;
         } else {
@@ -760,7 +772,7 @@ void CelestronOriginSimulator::createDummyImages() {
 
         // Create some individual frame images (slightly different each time)
         for (int frame = 1; frame <= 5; ++frame) {
-            QString frameFileName = QString("%1/frame_%2.jpg").arg(dirPath).arg(frame);
+            QString frameFileName = QDir(dirPath).absoluteFilePath(QString("frame_%1.jpg").arg(frame));
             
             // Add slight variations to simulate individual exposures
             QImage frameImage = deepSpaceImage.copy();
@@ -794,4 +806,9 @@ void CelestronOriginSimulator::createDummyImages() {
         QFileInfo fileInfo(tempDirObj.absoluteFilePath(file));
         qDebug() << "  " << file << "(" << fileInfo.size() << "bytes)";
     }
+    
+    // Print cleanup information
+    qDebug() << "Images created in Application Support directory:" << appSupportDir;
+    qDebug() << "Location: ~/Library/Application Support/OriginSimulator/";
+    qDebug() << "To view in Finder: open ~/Library/Application\\ Support/OriginSimulator/";
 }

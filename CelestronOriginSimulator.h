@@ -55,6 +55,10 @@ private:
     QTimer *m_updateTimer;
     QTimer *m_slewTimer;
     QTimer *m_imagingTimer;
+
+    // Absolute paths for image serving (NEW)
+    QString m_absoluteTempDir;
+    QString m_absoluteAstroDir;
     
     // Protocol handlers
     void handleWebSocketUpgrade(QTcpSocket *socket, const QByteArray &requestData);
