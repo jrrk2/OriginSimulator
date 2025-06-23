@@ -44,9 +44,12 @@ template <> constexpr inline auto WebSocketConnection::qt_create_metaobjectdata<
         "message",
         "pingReceived",
         "payload",
+        "pongReceived",
         "disconnected",
+        "pingTimeout",
         "handleData",
-        "onPingTimeout"
+        "onPingTimeout",
+        "sendAutomaticPing"
     };
 
     QtMocHelpers::UintData qt_methods {
@@ -58,12 +61,20 @@ template <> constexpr inline auto WebSocketConnection::qt_create_metaobjectdata<
         QtMocHelpers::SignalData<void(const QByteArray &)>(4, 2, QMC::AccessPublic, QMetaType::Void, {{
             { QMetaType::QByteArray, 5 },
         }}),
+        // Signal 'pongReceived'
+        QtMocHelpers::SignalData<void(const QByteArray &)>(6, 2, QMC::AccessPublic, QMetaType::Void, {{
+            { QMetaType::QByteArray, 5 },
+        }}),
         // Signal 'disconnected'
-        QtMocHelpers::SignalData<void()>(6, 2, QMC::AccessPublic, QMetaType::Void),
+        QtMocHelpers::SignalData<void()>(7, 2, QMC::AccessPublic, QMetaType::Void),
+        // Signal 'pingTimeout'
+        QtMocHelpers::SignalData<void()>(8, 2, QMC::AccessPublic, QMetaType::Void),
         // Slot 'handleData'
-        QtMocHelpers::SlotData<void()>(7, 2, QMC::AccessPrivate, QMetaType::Void),
+        QtMocHelpers::SlotData<void()>(9, 2, QMC::AccessPrivate, QMetaType::Void),
         // Slot 'onPingTimeout'
-        QtMocHelpers::SlotData<void()>(8, 2, QMC::AccessPrivate, QMetaType::Void),
+        QtMocHelpers::SlotData<void()>(10, 2, QMC::AccessPrivate, QMetaType::Void),
+        // Slot 'sendAutomaticPing'
+        QtMocHelpers::SlotData<void()>(11, 2, QMC::AccessPrivate, QMetaType::Void),
     };
     QtMocHelpers::UintData qt_properties {
     };
@@ -89,9 +100,12 @@ void WebSocketConnection::qt_static_metacall(QObject *_o, QMetaObject::Call _c, 
         switch (_id) {
         case 0: _t->textMessageReceived((*reinterpret_cast< std::add_pointer_t<QString>>(_a[1]))); break;
         case 1: _t->pingReceived((*reinterpret_cast< std::add_pointer_t<QByteArray>>(_a[1]))); break;
-        case 2: _t->disconnected(); break;
-        case 3: _t->handleData(); break;
-        case 4: _t->onPingTimeout(); break;
+        case 2: _t->pongReceived((*reinterpret_cast< std::add_pointer_t<QByteArray>>(_a[1]))); break;
+        case 3: _t->disconnected(); break;
+        case 4: _t->pingTimeout(); break;
+        case 5: _t->handleData(); break;
+        case 6: _t->onPingTimeout(); break;
+        case 7: _t->sendAutomaticPing(); break;
         default: ;
         }
     }
@@ -100,7 +114,11 @@ void WebSocketConnection::qt_static_metacall(QObject *_o, QMetaObject::Call _c, 
             return;
         if (QtMocHelpers::indexOfMethod<void (WebSocketConnection::*)(const QByteArray & )>(_a, &WebSocketConnection::pingReceived, 1))
             return;
-        if (QtMocHelpers::indexOfMethod<void (WebSocketConnection::*)()>(_a, &WebSocketConnection::disconnected, 2))
+        if (QtMocHelpers::indexOfMethod<void (WebSocketConnection::*)(const QByteArray & )>(_a, &WebSocketConnection::pongReceived, 2))
+            return;
+        if (QtMocHelpers::indexOfMethod<void (WebSocketConnection::*)()>(_a, &WebSocketConnection::disconnected, 3))
+            return;
+        if (QtMocHelpers::indexOfMethod<void (WebSocketConnection::*)()>(_a, &WebSocketConnection::pingTimeout, 4))
             return;
     }
 }
@@ -124,14 +142,14 @@ int WebSocketConnection::qt_metacall(QMetaObject::Call _c, int _id, void **_a)
     if (_id < 0)
         return _id;
     if (_c == QMetaObject::InvokeMetaMethod) {
-        if (_id < 5)
+        if (_id < 8)
             qt_static_metacall(this, _c, _id, _a);
-        _id -= 5;
+        _id -= 8;
     }
     if (_c == QMetaObject::RegisterMethodArgumentMetaType) {
-        if (_id < 5)
+        if (_id < 8)
             *reinterpret_cast<QMetaType *>(_a[0]) = QMetaType();
-        _id -= 5;
+        _id -= 8;
     }
     return _id;
 }
@@ -149,8 +167,20 @@ void WebSocketConnection::pingReceived(const QByteArray & _t1)
 }
 
 // SIGNAL 2
+void WebSocketConnection::pongReceived(const QByteArray & _t1)
+{
+    QMetaObject::activate<void>(this, &staticMetaObject, 2, nullptr, _t1);
+}
+
+// SIGNAL 3
 void WebSocketConnection::disconnected()
 {
-    QMetaObject::activate(this, &staticMetaObject, 2, nullptr);
+    QMetaObject::activate(this, &staticMetaObject, 3, nullptr);
+}
+
+// SIGNAL 4
+void WebSocketConnection::pingTimeout()
+{
+    QMetaObject::activate(this, &staticMetaObject, 4, nullptr);
 }
 QT_WARNING_POP

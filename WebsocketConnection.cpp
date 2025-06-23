@@ -3,15 +3,19 @@
 #include <QDebug>
 
 WebSocketConnection::WebSocketConnection(QTcpSocket *socket, QObject *parent) 
-    : QObject(parent), m_socket(socket), m_handshakeComplete(false) {
+    : QObject(parent), m_socket(socket), m_handshakeComplete(false), m_waitingForPong(false) {
     connect(m_socket, &QTcpSocket::readyRead, this, &WebSocketConnection::handleData);
     connect(m_socket, &QTcpSocket::disconnected, this, &WebSocketConnection::disconnected);
     
-    // Set up ping timeout timer
-    m_pingTimer = new QTimer(this);
-    m_pingTimer->setSingleShot(true);
-    m_pingTimer->setInterval(10000); // 10 second timeout
-    connect(m_pingTimer, &QTimer::timeout, this, &WebSocketConnection::onPingTimeout);
+    // Set up ping timeout timer (for when we send pings and expect pongs)
+    m_pingTimeoutTimer = new QTimer(this);
+    m_pingTimeoutTimer->setSingleShot(true);
+    m_pingTimeoutTimer->setInterval(10000); // 10 second timeout for pong response
+    connect(m_pingTimeoutTimer, &QTimer::timeout, this, &WebSocketConnection::onPingTimeout);
+    
+    // Set up automatic ping timer (telescope sends pings every 5 seconds)
+    m_autoPingTimer = new QTimer(this);
+    connect(m_autoPingTimer, &QTimer::timeout, this, &WebSocketConnection::sendAutomaticPing);
 }
 
 void WebSocketConnection::sendTextMessage(const QString &message) {
@@ -25,6 +29,44 @@ void WebSocketConnection::sendPongMessage(const QByteArray &payload) {
     if (!m_handshakeComplete || !m_socket) return;
     
     sendFrame(0x0A, payload); // Pong frame
+    qDebug() << "WebSocket pong sent with payload size:" << payload.size();
+}
+
+void WebSocketConnection::sendPingMessage(const QByteArray &payload) {
+    if (!m_handshakeComplete || !m_socket) return;
+    
+    sendFrame(0x09, payload); // Ping frame
+    m_waitingForPong = true;
+    m_pingTimeoutTimer->start(); // Start timeout timer
+    qDebug() << "WebSocket ping sent with payload size:" << payload.size();
+}
+
+void WebSocketConnection::startPingCycle(int intervalMs) {
+    if (m_autoPingTimer->isActive()) {
+        m_autoPingTimer->stop();
+    }
+    m_autoPingTimer->setInterval(intervalMs);
+    m_autoPingTimer->start();
+    qDebug() << "Started automatic ping cycle every" << intervalMs << "ms";
+}
+
+void WebSocketConnection::stopPingCycle() {
+    m_autoPingTimer->stop();
+    m_pingTimeoutTimer->stop();
+    m_waitingForPong = false;
+    qDebug() << "Stopped automatic ping cycle";
+}
+
+void WebSocketConnection::sendAutomaticPing() {
+    // Don't send another ping if we're still waiting for a pong
+    if (m_waitingForPong) {
+        qDebug() << "Skipping ping - still waiting for pong response";
+        return;
+    }
+    
+    // Send ping with 30-byte payload like real Origin telescope
+    QByteArray pingPayload(30, 0);
+    sendPingMessage(pingPayload);
 }
 
 void WebSocketConnection::sendFrame(quint8 opcode, const QByteArray &payload, bool masked) {
@@ -46,7 +88,7 @@ void WebSocketConnection::sendFrame(quint8 opcode, const QByteArray &payload, bo
         }
     }
     
-    // Note: Server-to-client frames are not masked
+    // Note: Server-to-client frames are not masked (as per WebSocket spec)
     frame.append(payload);
     m_socket->write(frame);
 }
@@ -81,6 +123,11 @@ bool WebSocketConnection::performHandshake(const QByteArray &requestData) {
     
     m_socket->write(response.toUtf8());
     m_handshakeComplete = true;
+    
+    // Start the ping cycle once handshake is complete (like real telescope)
+    QTimer::singleShot(1000, this, [this]() {
+        startPingCycle(5000); // Start pinging every 5 seconds
+    });
     
     return true;
 }
@@ -139,16 +186,19 @@ void WebSocketConnection::processFrame(const QByteArray &data) {
             break;
         case 0x08: // Close frame
             qDebug() << "WebSocket close frame received";
+            stopPingCycle();
             m_socket->disconnectFromHost();
             break;
-        case 0x09: // Ping frame
-            qDebug() << "WebSocket ping received, sending pong";
+        case 0x09: // Ping frame (client sent us a ping)
+            qDebug() << "WebSocket ping received from client, sending pong";
             sendPongMessage(payload);
             emit pingReceived(payload);
             break;
-        case 0x0A: // Pong frame
-            qDebug() << "WebSocket pong received";
-            m_pingTimer->stop();
+        case 0x0A: // Pong frame (client responded to our ping)
+            qDebug() << "WebSocket pong received from client";
+            m_pingTimeoutTimer->stop();
+            m_waitingForPong = false;
+            emit pongReceived(payload);
             break;
         default:
             qDebug() << "Unknown WebSocket frame opcode:" << opcode;
@@ -157,7 +207,8 @@ void WebSocketConnection::processFrame(const QByteArray &data) {
 }
 
 void WebSocketConnection::onPingTimeout() {
-    qDebug() << "WebSocket ping timeout, closing connection";
+    qDebug() << "WebSocket ping timeout - client didn't respond to ping";
+    m_waitingForPong = false;
     
     // Send close frame with ping timeout status
     QByteArray closePayload;
@@ -166,5 +217,7 @@ void WebSocketConnection::onPingTimeout() {
     closePayload.append("Ping timeout");
     
     sendFrame(0x08, closePayload); // Close frame
+    stopPingCycle();
+    emit pingTimeout();
     m_socket->disconnectFromHost();
 }
