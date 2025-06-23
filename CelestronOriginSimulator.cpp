@@ -165,22 +165,33 @@ void CelestronOriginSimulator::handleIncomingData(QTcpSocket *socket) {
     // Clear the pending request data
     m_pendingRequests.remove(socket);
 }
+// CORRECTED FIX: CelestronOriginSimulator.cpp - Proper handshake sequence
+// Perform handshake FIRST, then transfer socket ownership
 
 void CelestronOriginSimulator::handleWebSocketUpgrade(QTcpSocket *socket, const QByteArray &requestData) {
-    // CRITICAL: Disconnect the protocol detector BEFORE creating WebSocket handler
-    qDebug() << "*** DISCONNECTING PROTOCOL DETECTOR FROM SOCKET ***";
-    disconnect(socket, &QTcpSocket::readyRead, this, nullptr);
+    qDebug() << "*** STARTING WEBSOCKET UPGRADE PROCESS ***";
+    qDebug() << "Request data size:" << requestData.size();
     
-    // Clear any pending data since we're switching protocols
-    m_pendingRequests.remove(socket);
+    // Create WebSocketConnection but DON'T disconnect protocol detector yet
+    WebSocketConnection *wsConn = new WebSocketConnection(socket, this, false); // false = don't take ownership yet
     
-    WebSocketConnection *wsConn = new WebSocketConnection(socket, this);
-    
+    // FIRST: Perform the handshake using the request data
     if (wsConn->performHandshake(requestData)) {
+        qDebug() << "*** HANDSHAKE SUCCESSFUL - TRANSFERRING SOCKET OWNERSHIP ***";
+        
+        // CRITICAL: NOW disconnect the protocol detector since handshake worked
+        disconnect(socket, &QTcpSocket::readyRead, this, nullptr);
+        qDebug() << "*** PROTOCOL DETECTOR DISCONNECTED ***";
+        
+        // Clear any pending data since we're switching protocols  
+        m_pendingRequests.remove(socket);
+        
+        // NOW let WebSocketConnection take full ownership
+        wsConn->takeSocketOwnership();
+        
+        // Add to our client list
         m_webSocketClients.append(wsConn);
         m_statusSender->addWebSocketClient(wsConn);
-        
-        qDebug() << "*** SOCKET OWNERSHIP TRANSFERRED TO WEBSOCKET HANDLER ***";
         
         // Set up all signal connections for WebSocket handling
         connect(wsConn, &WebSocketConnection::textMessageReceived, 
@@ -214,14 +225,13 @@ void CelestronOriginSimulator::handleWebSocketUpgrade(QTcpSocket *socket, const 
             }
         });
     } else {
-        qDebug() << "WebSocket handshake failed";
+        qDebug() << "*** HANDSHAKE FAILED - KEEPING PROTOCOL DETECTOR ***";
         
-        // Re-connect the protocol detector if handshake failed
-        connect(socket, &QTcpSocket::readyRead, this, [this, socket]() {
-            handleIncomingData(socket);
-        }, Qt::QueuedConnection);
-        
+        // Handshake failed, so keep the original protocol detector connected
+        // Don't disconnect anything - let it continue as HTTP
         sendHttpResponse(socket, 400, "text/plain", "Bad WebSocket Request");
+        
+        // Clean up the failed WebSocket connection
         delete wsConn;
     }
 }

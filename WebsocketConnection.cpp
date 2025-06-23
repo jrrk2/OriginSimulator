@@ -66,9 +66,14 @@ void WebSocketConnection::sendFrame(quint8 opcode, const QByteArray &payload, bo
     m_socket->flush();
 }
 
+
+// Updated performHandshake to set completion flag and start ping cycle
 bool WebSocketConnection::performHandshake(const QByteArray &requestData) {
     QString request = QString::fromUtf8(requestData);
     QStringList lines = request.split("\r\n");
+    
+    qDebug() << "*** PERFORMING WEBSOCKET HANDSHAKE ***";
+    qDebug() << "Request lines:" << lines.size();
     
     QString webSocketKey;
     for (const QString &line : lines) {
@@ -79,8 +84,11 @@ bool WebSocketConnection::performHandshake(const QByteArray &requestData) {
     }
     
     if (webSocketKey.isEmpty()) {
+        qDebug() << "*** HANDSHAKE FAILED: No WebSocket key found ***";
         return false;
     }
+    
+    qDebug() << "WebSocket key found:" << webSocketKey;
     
     // Generate WebSocket accept key
     QString acceptKey = webSocketKey + "258EAFA5-E914-47DA-95CA-C5AB0DC85B11";
@@ -94,10 +102,13 @@ bool WebSocketConnection::performHandshake(const QByteArray &requestData) {
     response += QString("Sec-WebSocket-Accept: %1\r\n").arg(acceptValue);
     response += "\r\n";
     
-    m_socket->write(response.toUtf8());
-    m_handshakeComplete = true;
+    qint64 bytesWritten = m_socket->write(response.toUtf8());
+    m_socket->flush();
     
-    qDebug() << "*** WebSocket handshake completed successfully ***";
+    qDebug() << "*** HANDSHAKE RESPONSE SENT ***";
+    qDebug() << "Response bytes written:" << bytesWritten;
+    
+    m_handshakeComplete = true;
     
     // Start ping cycle after handshake
     QTimer::singleShot(1000, this, [this]() {
@@ -113,8 +124,7 @@ bool WebSocketConnection::performHandshake(const QByteArray &requestData) {
     return true;
 }
 
-
-// Enhanced data handling to verify we're receiving data
+// Enhanced data handling with better debugging
 void WebSocketConnection::handleData() {
     if (!m_handshakeComplete) {
         qDebug() << "*** DATA RECEIVED BEFORE HANDSHAKE COMPLETE ***";
@@ -134,11 +144,10 @@ void WebSocketConnection::handleData() {
     // Read all available data
     QByteArray newData = m_socket->read(bytesAvailable);
     qDebug() << "Successfully read:" << newData.size() << "bytes";
-    qDebug() << "Data hex (first 32 bytes):" << newData.left(32).toHex();
+    qDebug() << "Data hex (first 64 bytes):" << newData.left(64).toHex();
     
     if (newData.isEmpty()) {
         qDebug() << "ERROR: Read returned empty despite bytesAvailable =" << bytesAvailable;
-        qDebug() << "This suggests another handler consumed the data!";
         return;
     }
     
@@ -370,15 +379,34 @@ void WebSocketConnection::onPingTimeout() {
     emit pingTimeout();
 }
 
-// Enhanced WebSocketConnection constructor to ensure exclusive socket access
-WebSocketConnection::WebSocketConnection(QTcpSocket *socket, QObject *parent) 
+// Updated WebSocketConnection constructor with delayed ownership option
+WebSocketConnection::WebSocketConnection(QTcpSocket *socket, QObject *parent, bool takeOwnership) 
     : QObject(parent), m_socket(socket), m_handshakeComplete(false), 
       m_waitingForPong(false), m_pingCounter(0), m_missedPongCount(0) {
     
-    // CRITICAL: Ensure no other handlers are connected to this socket
-    qDebug() << "*** TAKING EXCLUSIVE OWNERSHIP OF SOCKET ***";
+    qDebug() << "*** WebSocketConnection created ***";
+    qDebug() << "Take immediate ownership:" << takeOwnership;
     qDebug() << "Socket state:" << m_socket->state();
-    qDebug() << "Bytes available at handover:" << m_socket->bytesAvailable();
+    
+    // Initialize timers
+    m_pingTimeoutTimer = new QTimer(this);
+    m_pingTimeoutTimer->setSingleShot(true);
+    m_pingTimeoutTimer->setInterval(15000);
+    connect(m_pingTimeoutTimer, &QTimer::timeout, this, &WebSocketConnection::onPingTimeout);
+    
+    m_autoPingTimer = new QTimer(this);
+    m_autoPingTimer->setSingleShot(false);
+    
+    // Only take ownership immediately if requested (for backward compatibility)
+    if (takeOwnership) {
+        takeSocketOwnership();
+    }
+}
+
+// New method to take socket ownership after handshake
+void WebSocketConnection::takeSocketOwnership() {
+    qDebug() << "*** TAKING EXCLUSIVE SOCKET OWNERSHIP ***";
+    qDebug() << "Bytes available:" << m_socket->bytesAvailable();
     
     // CRITICAL: Use DirectConnection for immediate processing
     connect(m_socket, &QTcpSocket::readyRead, 
@@ -388,19 +416,8 @@ WebSocketConnection::WebSocketConnection(QTcpSocket *socket, QObject *parent)
     connect(m_socket, &QTcpSocket::disconnected, 
             this, &WebSocketConnection::disconnected);
     
-    // Initialize ping timeout timer
-    m_pingTimeoutTimer = new QTimer(this);
-    m_pingTimeoutTimer->setSingleShot(true);
-    m_pingTimeoutTimer->setInterval(15000);
-    connect(m_pingTimeoutTimer, &QTimer::timeout, this, &WebSocketConnection::onPingTimeout);
-    
-    // Initialize auto ping timer  
-    m_autoPingTimer = new QTimer(this);
-    m_autoPingTimer->setSingleShot(false);
-    
-    qDebug() << "*** WebSocketConnection created with EXCLUSIVE socket ownership ***";
+    qDebug() << "*** SOCKET OWNERSHIP ESTABLISHED ***";
 }
-
 
 void WebSocketConnection::resetPingState() {
     m_pingCounter = 0;

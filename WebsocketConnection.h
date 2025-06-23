@@ -9,12 +9,16 @@ class WebSocketConnection : public QObject {
     Q_OBJECT
     
 public:
-    explicit WebSocketConnection(QTcpSocket *socket, QObject *parent = nullptr);
+    // Updated constructor with optional delayed ownership
+    explicit WebSocketConnection(QTcpSocket *socket, QObject *parent = nullptr, bool takeOwnership = true);
     
     void sendTextMessage(const QString &message);
     void sendPongMessage(const QByteArray &payload);
     void sendPingMessage(const QByteArray &payload = QByteArray());
     bool performHandshake(const QByteArray &requestData);
+    
+    // New method to take ownership after handshake
+    void takeSocketOwnership();
     
     // Start automatic ping cycle (telescope initiates pings)
     void startPingCycle(int intervalMs = 5000);
@@ -23,6 +27,7 @@ public:
     // Debug and monitoring methods
     void resetPingState();
     void verifyTimerSetup();
+    void verifySocketOwnership();
 
 signals:
     void textMessageReceived(const QString &message);
@@ -47,8 +52,6 @@ private:
     int m_missedPongCount;
   
     void sendFrame(quint8 opcode, const QByteArray &payload, bool masked = false);
-    
-    // CRITICAL: Updated method signature to return frame size
     int processFrame(const QByteArray &data);
 };
 
