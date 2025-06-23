@@ -113,25 +113,46 @@ bool WebSocketConnection::performHandshake(const QByteArray &requestData) {
     return true;
 }
 
+
+// Enhanced data handling to verify we're receiving data
 void WebSocketConnection::handleData() {
-    if (!m_handshakeComplete) return;
+    if (!m_handshakeComplete) {
+        qDebug() << "*** DATA RECEIVED BEFORE HANDSHAKE COMPLETE ***";
+        return;
+    }
     
-    QByteArray newData = m_socket->readAll();
-    qDebug() << "*** RECEIVED DATA ***";
-    qDebug() << "New data size:" << newData.size();
-    qDebug() << "Data hex:" << newData.left(64).toHex(); // First 64 bytes
+    qint64 bytesAvailable = m_socket->bytesAvailable();
+    qDebug() << "*** WEBSOCKET DATA HANDLER CALLED ***";
+    qDebug() << "Bytes available:" << bytesAvailable;
+    qDebug() << "Socket state:" << m_socket->state();
+    
+    if (bytesAvailable == 0) {
+        qDebug() << "WARNING: readyRead fired but no bytes available";
+        return;
+    }
+    
+    // Read all available data
+    QByteArray newData = m_socket->read(bytesAvailable);
+    qDebug() << "Successfully read:" << newData.size() << "bytes";
+    qDebug() << "Data hex (first 32 bytes):" << newData.left(32).toHex();
+    
+    if (newData.isEmpty()) {
+        qDebug() << "ERROR: Read returned empty despite bytesAvailable =" << bytesAvailable;
+        qDebug() << "This suggests another handler consumed the data!";
+        return;
+    }
     
     m_pendingData.append(newData);
     qDebug() << "Total pending data size:" << m_pendingData.size();
     
-    // Process all complete frames in the buffer
+    // Process all complete frames
     while (!m_pendingData.isEmpty()) {
         int frameSize = processFrame(m_pendingData);
         if (frameSize <= 0) {
-            qDebug() << "No complete frame available, waiting for more data";
-            break; // No complete frame available
+            qDebug() << "Waiting for more data to complete frame";
+            break;
         }
-        qDebug() << "Processed frame of size:" << frameSize;
+        qDebug() << "Processed frame of" << frameSize << "bytes";
         m_pendingData.remove(0, frameSize);
         qDebug() << "Remaining pending data:" << m_pendingData.size();
     }
@@ -349,26 +370,37 @@ void WebSocketConnection::onPingTimeout() {
     emit pingTimeout();
 }
 
+// Enhanced WebSocketConnection constructor to ensure exclusive socket access
 WebSocketConnection::WebSocketConnection(QTcpSocket *socket, QObject *parent) 
     : QObject(parent), m_socket(socket), m_handshakeComplete(false), 
       m_waitingForPong(false), m_pingCounter(0), m_missedPongCount(0) {
     
-    // Connect socket signals
-    connect(m_socket, &QTcpSocket::readyRead, this, &WebSocketConnection::handleData);
-    connect(m_socket, &QTcpSocket::disconnected, this, &WebSocketConnection::disconnected);
+    // CRITICAL: Ensure no other handlers are connected to this socket
+    qDebug() << "*** TAKING EXCLUSIVE OWNERSHIP OF SOCKET ***";
+    qDebug() << "Socket state:" << m_socket->state();
+    qDebug() << "Bytes available at handover:" << m_socket->bytesAvailable();
     
-    // Initialize ping timeout timer (more generous timeout)
+    // CRITICAL: Use DirectConnection for immediate processing
+    connect(m_socket, &QTcpSocket::readyRead, 
+            this, &WebSocketConnection::handleData, 
+            Qt::DirectConnection);
+    
+    connect(m_socket, &QTcpSocket::disconnected, 
+            this, &WebSocketConnection::disconnected);
+    
+    // Initialize ping timeout timer
     m_pingTimeoutTimer = new QTimer(this);
     m_pingTimeoutTimer->setSingleShot(true);
-    m_pingTimeoutTimer->setInterval(15000); // 15 second timeout
+    m_pingTimeoutTimer->setInterval(15000);
     connect(m_pingTimeoutTimer, &QTimer::timeout, this, &WebSocketConnection::onPingTimeout);
     
     // Initialize auto ping timer  
     m_autoPingTimer = new QTimer(this);
     m_autoPingTimer->setSingleShot(false);
     
-    qDebug() << "*** WebSocketConnection created with EXTENSIVE DEBUG LOGGING ***";
+    qDebug() << "*** WebSocketConnection created with EXCLUSIVE socket ownership ***";
 }
+
 
 void WebSocketConnection::resetPingState() {
     m_pingCounter = 0;

@@ -88,9 +88,10 @@ void CelestronOriginSimulator::handleNewConnection() {
     // Store pending request data
     m_pendingRequests[socket] = QByteArray();
     
+    // CRITICAL: Use QueuedConnection to prevent immediate processing conflicts
     connect(socket, &QTcpSocket::readyRead, this, [this, socket]() {
         handleIncomingData(socket);
-    });
+    }, Qt::QueuedConnection);
     
     connect(socket, &QTcpSocket::disconnected, this, [this, socket]() {
         m_pendingRequests.remove(socket);
@@ -166,25 +167,31 @@ void CelestronOriginSimulator::handleIncomingData(QTcpSocket *socket) {
 }
 
 void CelestronOriginSimulator::handleWebSocketUpgrade(QTcpSocket *socket, const QByteArray &requestData) {
+    // CRITICAL: Disconnect the protocol detector BEFORE creating WebSocket handler
+    qDebug() << "*** DISCONNECTING PROTOCOL DETECTOR FROM SOCKET ***";
+    disconnect(socket, &QTcpSocket::readyRead, this, nullptr);
+    
+    // Clear any pending data since we're switching protocols
+    m_pendingRequests.remove(socket);
+    
     WebSocketConnection *wsConn = new WebSocketConnection(socket, this);
     
     if (wsConn->performHandshake(requestData)) {
         m_webSocketClients.append(wsConn);
         m_statusSender->addWebSocketClient(wsConn);
         
-        // CRITICAL: Set up all signal connections BEFORE starting ping cycle
+        qDebug() << "*** SOCKET OWNERSHIP TRANSFERRED TO WEBSOCKET HANDLER ***";
+        
+        // Set up all signal connections for WebSocket handling
         connect(wsConn, &WebSocketConnection::textMessageReceived, 
                 this, &CelestronOriginSimulator::processWebSocketCommand);
         
-        // CRITICAL: Handle ping/pong properly
         connect(wsConn, &WebSocketConnection::pingReceived,
                 this, &CelestronOriginSimulator::handleWebSocketPing);
         
-        // CRITICAL: Handle pong responses  
         connect(wsConn, &WebSocketConnection::pongReceived,
                 this, &CelestronOriginSimulator::handleWebSocketPong);
         
-        // CRITICAL: Handle ping timeouts
         connect(wsConn, &WebSocketConnection::pingTimeout,
                 this, &CelestronOriginSimulator::handleWebSocketTimeout);
         
@@ -208,7 +215,14 @@ void CelestronOriginSimulator::handleWebSocketUpgrade(QTcpSocket *socket, const 
         });
     } else {
         qDebug() << "WebSocket handshake failed";
+        
+        // Re-connect the protocol detector if handshake failed
+        connect(socket, &QTcpSocket::readyRead, this, [this, socket]() {
+            handleIncomingData(socket);
+        }, Qt::QueuedConnection);
+        
         sendHttpResponse(socket, 400, "text/plain", "Bad WebSocket Request");
+        delete wsConn;
     }
 }
 
