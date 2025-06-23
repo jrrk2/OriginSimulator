@@ -57,19 +57,6 @@ void WebSocketConnection::stopPingCycle() {
     qDebug() << "Stopped automatic ping cycle";
 }
 
-void WebSocketConnection::sendAutomaticPing() {
-    // Don't send another ping if we're still waiting for a pong
-    if (m_waitingForPong) {
-        qDebug() << "Skipping ping - still waiting for pong response";
-        return;
-    }
-    
-    // Format the ping payload to match IXWebSocket heartbeat format
-    QString heartbeatString = QString("ixwebsocket::heartbeat::5s::%1").arg(m_pingCounter++);
-    QByteArray pingPayload = heartbeatString.toUtf8();
-    sendPingMessage(pingPayload);
-}
-
 void WebSocketConnection::sendFrame(quint8 opcode, const QByteArray &payload, bool masked) {
     QByteArray frame;
     
@@ -229,19 +216,52 @@ void WebSocketConnection::processFrame(const QByteArray &data) {
         processFrame(remainingData);
     }
 }
+// Enhanced WebSocketConnection to match real telescope ping/pong behavior
+// Replace the sendAutomaticPing method with this more realistic version:
 
+void WebSocketConnection::sendAutomaticPing() {
+    // Don't send another ping if we're still waiting for a pong
+    if (m_waitingForPong) {
+        qDebug() << "Skipping ping - still waiting for pong response";
+        return;
+    }
+    
+    // Format the ping payload to match real Origin telescope exactly
+    // Real telescope sends: "ixwebsocket::heartbeat::5s::N" where N increments
+    QString heartbeatString = QString("ixwebsocket::heartbeat::5s::%1").arg(m_pingCounter++);
+    QByteArray pingPayload = heartbeatString.toUtf8();
+    
+    // Pad to exactly 29 bytes like real telescope (real telescope sends 29-byte pings)
+    while (pingPayload.size() < 29) {
+        pingPayload.append('\0');
+    }
+    if (pingPayload.size() > 29) {
+        pingPayload = pingPayload.left(29);
+    }
+    
+    sendPingMessage(pingPayload);
+    qDebug() << "Sent realistic Origin ping:" << heartbeatString;
+}
+
+// Also enhance the ping timeout handling to match real telescope behavior:
 void WebSocketConnection::onPingTimeout() {
-    qDebug() << "WebSocket ping timeout - client didn't respond to ping";
+    qDebug() << "WebSocket ping timeout - client didn't respond to ping within 10 seconds";
     m_waitingForPong = false;
     
-    // Send close frame with ping timeout status
+    // Send close frame with ping timeout status (code 1011 like real telescope)
     QByteArray closePayload;
     closePayload.append((1011 >> 8) & 0xFF); // Status code 1011 (Internal Error)
     closePayload.append(1011 & 0xFF);
-    closePayload.append("Ping timeout");
+    closePayload.append("Ping timeout"); // Exact message from real telescope
     
     sendFrame(0x08, closePayload); // Close frame
     stopPingCycle();
     emit pingTimeout();
-    m_socket->disconnectFromHost();
+    
+    // Don't immediately disconnect - real telescope keeps trying
+    QTimer::singleShot(2000, this, [this]() {
+        if (m_socket && m_socket->state() == QAbstractSocket::ConnectedState) {
+            m_socket->disconnectFromHost();
+        }
+    });
 }

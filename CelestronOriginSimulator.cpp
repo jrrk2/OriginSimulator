@@ -408,39 +408,65 @@ void CelestronOriginSimulator::sendBroadcast() {
     }
 }
 
+// Enhanced timing method in CelestronOriginSimulator.cpp
+// Add this method to make the simulator behave more like the real telescope
+
 void CelestronOriginSimulator::sendStatusUpdates() {
     // Update time
     m_telescopeState->dateTime = QDateTime::currentDateTime();
     
-    // Send regular status updates to all WebSocket clients
+    // Send status updates with realistic intervals matching real telescope behavior
+    static int updateCounter = 0;
+    updateCounter++;
+    
+    // Mount status - every second (like real telescope)
     m_statusSender->sendMountStatusToAll();
     
-    // Only send image update every 3 seconds to avoid flooding
-    static int imageCounter = 0;
-    if (++imageCounter % 3 == 0) {
-        // Simulate a new image every 3 seconds
+    // Focuser status - every ~2-3 seconds (varies in real telescope)
+    if (updateCounter % 2 == 0 || updateCounter % 3 == 0) {
+        m_statusSender->sendFocuserStatusToAll();
+    }
+    
+    // Camera parameters - every ~3 seconds  
+    if (updateCounter % 3 == 0) {
+        m_statusSender->sendCameraParamsToAll();
+    }
+    
+    // New image notifications - every ~3 seconds (matches real telescope)
+    if (updateCounter % 3 == 0) {
         m_telescopeState->sequenceNumber++;
-        m_telescopeState->fileLocation = QString("Images/Temp/%1.jpg").arg(m_telescopeState->sequenceNumber % 10);
-        
-        // Slightly adjust RA and Dec to simulate movement
-        m_telescopeState->ra += 0.0001;
-        m_telescopeState->dec += 0.00001;
-        
+        m_telescopeState->fileLocation = m_telescopeState->getNextImageFile();
         m_statusSender->sendNewImageReadyToAll();
     }
     
-    // Send other status updates less frequently
-    static int statusCounter = 0;
-    if (++statusCounter % 5 == 0) {
-        m_statusSender->sendFocuserStatusToAll();
-        m_statusSender->sendCameraParamsToAll();
-        
-        if (statusCounter % 10 == 0) {
-            m_statusSender->sendEnvironmentStatusToAll();
-            m_statusSender->sendDiskStatusToAll();
-            m_statusSender->sendDewHeaterStatusToAll();
-            m_statusSender->sendOrientationStatusToAll();
-        }
+    // Environmental data - every ~10 seconds (less frequent)
+    if (updateCounter % 10 == 0) {
+        m_statusSender->sendEnvironmentStatusToAll();
+    }
+    
+    // Disk status - every ~10 seconds
+    if (updateCounter % 10 == 0) {
+        m_statusSender->sendDiskStatusToAll();
+    }
+    
+    // Dew heater status - every ~15 seconds (occasional)
+    if (updateCounter % 15 == 0) {
+        m_statusSender->sendDewHeaterStatusToAll();
+    }
+    
+    // Orientation sensor - every ~30 seconds (sporadic like real telescope)
+    if (updateCounter % 30 == 0) {
+        m_statusSender->sendOrientationStatusToAll();
+    }
+    
+    // Task controller status - every ~5 seconds
+    if (updateCounter % 5 == 0) {
+        m_statusSender->sendTaskControllerStatusToAll();
+    }
+    
+    // Reset counter to prevent overflow
+    if (updateCounter > 1000) {
+        updateCounter = 0;
     }
 }
 
@@ -484,6 +510,9 @@ void CelestronOriginSimulator::updateImaging() {
     }
 }
 
+// Enhanced image creation method for CelestronOriginSimulator.cpp
+// Replace the createDummyImages method with this more realistic version:
+
 void CelestronOriginSimulator::createDummyImages() {
     // Create directory structure
     QString tempDir = "simulator_data/Images/Temp";
@@ -499,46 +528,113 @@ void CelestronOriginSimulator::createDummyImages() {
         return;
     }
 
-    qDebug() << "Creating dummy images in:" << tempDir;
+    qDebug() << "Creating realistic astronomy images in:" << tempDir;
 
-    // Create 10 dummy images (0.jpg to 9.jpg)
+    // Create 10 realistic live view images (0.jpg to 9.jpg)
     for (int i = 0; i < 10; ++i) {
-        // Create a simple image with text
+        // Create realistic astronomy image (800x600 like real Origin camera)
         QImage image(800, 600, QImage::Format_RGB888);
-        image.fill(Qt::black);
+        image.fill(QColor(5, 5, 10)); // Dark sky background
 
-        // Draw some "stars"
         QPainter painter(&image);
-        painter.setPen(Qt::white);
-        painter.setFont(QFont("Arial", 20));
-        painter.drawText(QRect(50, 50, 700, 100), 
-                        Qt::AlignCenter, 
-                        QString("Celestron Origin Simulator - Image %1").arg(i));
+        painter.setRenderHint(QPainter::Antialiasing);
 
-        // Draw some random stars
-        painter.setPen(Qt::white);
-        painter.setBrush(Qt::white);
-        for (int j = 0; j < 200; ++j) {
-            int x = qrand() % (image.width() - 10);
-            int y = qrand() % (image.height() - 10);
-            int size = (qrand() % 3) + 1;
-            painter.drawEllipse(x, y, size, size);
+        // Create realistic star field
+        for (int star = 0; star < 500; ++star) {
+            int x = qrand() % image.width();
+            int y = qrand() % image.height();
+            
+            // Vary star brightness and size realistically
+            int brightness = 50 + (qrand() % 205); // 50-255 brightness
+            int size = 1 + (qrand() % 3); // 1-3 pixel stars mostly
+            
+            // Occasional bright star
+            if (qrand() % 20 == 0) {
+                brightness = 200 + (qrand() % 55); // Very bright
+                size = 2 + (qrand() % 2); // Larger
+            }
+            
+            QColor starColor(brightness, brightness, brightness - (qrand() % 30));
+            painter.setPen(starColor);
+            painter.setBrush(starColor);
+            
+            // Draw star with slight gaussian blur effect
+            painter.drawEllipse(x-size/2, y-size/2, size, size);
+            
+            // Add slight diffraction spikes for brighter stars
+            if (brightness > 180) {
+                painter.setPen(QColor(brightness/3, brightness/3, brightness/3));
+                painter.drawLine(x-size*2, y, x+size*2, y); // Horizontal spike
+                painter.drawLine(x, y-size*2, x, y+size*2); // Vertical spike
+            }
         }
 
-        // Add timestamp
-        painter.setPen(Qt::lightGray);
-        painter.setFont(QFont("Arial", 12));
-        painter.drawText(QRect(10, image.height() - 30, 400, 20), 
-                        Qt::AlignLeft, 
-                        QString("Created: %1").arg(QDateTime::currentDateTime().toString()));
+        // Add some realistic nebulosity (faint background glow)
+        for (int nebula = 0; nebula < 3; ++nebula) {
+            int centerX = qrand() % image.width();
+            int centerY = qrand() % image.height();
+            int radius = 20 + (qrand() % 60);
+            
+            QRadialGradient gradient(centerX, centerY, radius);
+            gradient.setColorAt(0, QColor(20, 15, 25, 100)); // Faint purple core
+            gradient.setColorAt(0.5, QColor(10, 8, 15, 50));
+            gradient.setColorAt(1, QColor(5, 5, 10, 0)); // Fade to background
+            
+            painter.setBrush(QBrush(gradient));
+            painter.setPen(Qt::NoPen);
+            painter.drawEllipse(centerX - radius, centerY - radius, radius*2, radius*2);
+        }
+
+        // Add some realistic noise (like real CCD cameras)
+        for (int noise = 0; noise < 2000; ++noise) {
+            int x = qrand() % image.width();
+            int y = qrand() % image.height();
+            QColor pixel = image.pixelColor(x, y);
+            int variation = (qrand() % 10) - 5; // ±5 noise
+            pixel.setRed(qBound(0, pixel.red() + variation, 255));
+            pixel.setGreen(qBound(0, pixel.green() + variation, 255));
+            pixel.setBlue(qBound(0, pixel.blue() + variation, 255));
+            image.setPixelColor(x, y, pixel);
+        }
+
+        // Add crosshairs (like real telescope live view)
+        painter.setPen(QColor(100, 100, 100, 150));
+        int centerX = image.width() / 2;
+        int centerY = image.height() / 2;
+        
+        // Crosshair lines
+        painter.drawLine(centerX - 20, centerY, centerX + 20, centerY);
+        painter.drawLine(centerX, centerY - 20, centerX, centerY + 20);
+        
+        // Corner markers
+        painter.drawLine(10, 10, 30, 10);
+        painter.drawLine(10, 10, 10, 30);
+        painter.drawLine(image.width()-30, 10, image.width()-10, 10);
+        painter.drawLine(image.width()-10, 10, image.width()-10, 30);
+
+        // Add realistic timestamp and info overlay
+        painter.setPen(QColor(200, 200, 200, 180));
+        painter.setFont(QFont("Consolas", 8));
+        
+        QString timeStr = QDateTime::currentDateTime().toString("yyyy-MM-dd hh:mm:ss");
+        QString infoStr = QString("ISO:%1 EXP:%2s BIN:%3x%3")
+                         .arg(m_telescopeState->iso)
+                         .arg(m_telescopeState->exposure, 0, 'f', 1)
+                         .arg(m_telescopeState->binning);
+        
+        painter.drawText(10, image.height() - 25, timeStr);
+        painter.drawText(10, image.height() - 10, infoStr);
+        
+        // Add frame number
+        painter.drawText(image.width() - 50, 20, QString("Frame %1").arg(i));
 
         painter.end();
 
         // Save the image
         QString fileName = QString("%1/%2.jpg").arg(tempDir).arg(i);
 
-        if (image.save(fileName, "JPEG", 90)) {
-            qDebug() << "Successfully created dummy image:" << fileName;
+        if (image.save(fileName, "JPEG", 95)) {
+            qDebug() << "Successfully created realistic astronomy image:" << fileName;
 
             // Verify the file exists and get its size
             QFileInfo fileInfo(fileName);
@@ -552,67 +648,139 @@ void CelestronOriginSimulator::createDummyImages() {
         }
     }
 
-    // Create subdirectory for each astrophotography dir
-    for (const QString &dir : m_telescopeState->astrophotographyDirs) {
-        QString dirPath = QString("%1/%2").arg(astroDir).arg(dir);
+    // Create realistic astrophotography directories and images
+    for (const QString &target : m_telescopeState->astrophotographyDirs) {
+        QString dirPath = QString("%1/%2").arg(astroDir).arg(target);
         if (!QDir().mkpath(dirPath)) {
             qDebug() << "Failed to create astrophotography directory:" << dirPath;
             continue;
         }
 
-        // Create a stacked master image
-        QImage masterImage(1024, 768, QImage::Format_RGB888);
-        masterImage.fill(Qt::black);
+        // Create a realistic deep-space object image
+        QImage deepSpaceImage(1024, 768, QImage::Format_RGB888);
+        deepSpaceImage.fill(QColor(2, 2, 5)); // Very dark space background
 
-        // Draw some "stars" and target name
-        QPainter painter(&masterImage);
-        painter.setPen(Qt::white);
-        painter.setFont(QFont("Arial", 24));
-        painter.drawText(QRect(50, 50, 900, 100), 
-                        Qt::AlignCenter, 
-                        QString("Stacked Image: %1").arg(dir));
+        QPainter painter(&deepSpaceImage);
+        painter.setRenderHint(QPainter::Antialiasing);
 
-        // Draw some random stars with galaxy-like pattern
-        painter.setPen(Qt::white);
-        painter.setBrush(Qt::white);
-        for (int j = 0; j < 1000; ++j) {
-            // Create a spiral galaxy pattern
-            double angle = (qrand() % 360) * M_PI / 180.0;
-            double distance = (qrand() % 300) + 50;
-            double xOffset = masterImage.width() / 2 + cos(angle) * distance;
-            double yOffset = masterImage.height() / 2 + sin(angle) * distance;
-
-            int x = xOffset + (qrand() % 20) - 10;
-            int y = yOffset + (qrand() % 20) - 10;
-
-            // Skip if outside image
-            if (x < 0 || x >= masterImage.width() || 
-                y < 0 || y >= masterImage.height()) {
-                continue;
+        // Create appropriate deep-space object based on target name
+        if (target.contains("Galaxy", Qt::CaseInsensitive)) {
+            // Create spiral galaxy structure
+            int centerX = deepSpaceImage.width() / 2;
+            int centerY = deepSpaceImage.height() / 2;
+            
+            // Galaxy core
+            QRadialGradient coreGradient(centerX, centerY, 40);
+            coreGradient.setColorAt(0, QColor(255, 220, 180, 200)); // Bright core
+            coreGradient.setColorAt(0.3, QColor(200, 170, 140, 150));
+            coreGradient.setColorAt(0.7, QColor(100, 90, 80, 100));
+            coreGradient.setColorAt(1, QColor(50, 45, 40, 50));
+            
+            painter.setBrush(QBrush(coreGradient));
+            painter.setPen(Qt::NoPen);
+            painter.drawEllipse(centerX - 40, centerY - 40, 80, 80);
+            
+            // Spiral arms
+            for (int arm = 0; arm < 2; ++arm) {
+                for (double t = 0; t < 6 * M_PI; t += 0.1) {
+                    double spiral_a = 10;
+                    double x = centerX + (spiral_a * t * cos(t + arm * M_PI));
+                    double y = centerY + (spiral_a * t * sin(t + arm * M_PI) * 0.6); // Flattened
+                    
+                    if (x >= 0 && x < deepSpaceImage.width() && y >= 0 && y < deepSpaceImage.height()) {
+                        int brightness = 100 - (t * 15);
+                        if (brightness > 20) {
+                            painter.setPen(QColor(brightness, brightness * 0.9, brightness * 0.8, 100));
+                            painter.drawPoint(x, y);
+                        }
+                    }
+                }
             }
+        } else if (target.contains("Nebula", Qt::CaseInsensitive)) {
+            // Create nebula structure
+            int centerX = deepSpaceImage.width() / 2;
+            int centerY = deepSpaceImage.height() / 2;
+            
+            // Multiple overlapping colored gas clouds
+            QColor nebulaColors[] = {
+                QColor(255, 100, 100, 80), // H-alpha red
+                QColor(100, 255, 150, 60), // OIII green
+                QColor(150, 150, 255, 70)  // Blue reflection
+            };
+            
+            for (int cloud = 0; cloud < 3; ++cloud) {
+                int cloudX = centerX + (qrand() % 200) - 100;
+                int cloudY = centerY + (qrand() % 150) - 75;
+                int radius = 60 + (qrand() % 100);
+                
+                QRadialGradient cloudGradient(cloudX, cloudY, radius);
+                cloudGradient.setColorAt(0, nebulaColors[cloud]);
+                cloudGradient.setColorAt(0.5, QColor(nebulaColors[cloud].red(), 
+                                                   nebulaColors[cloud].green(), 
+                                                   nebulaColors[cloud].blue(), 40));
+                cloudGradient.setColorAt(1, QColor(nebulaColors[cloud].red(), 
+                                                 nebulaColors[cloud].green(), 
+                                                 nebulaColors[cloud].blue(), 0));
+                
+                painter.setBrush(QBrush(cloudGradient));
+                painter.setPen(Qt::NoPen);
+                painter.drawEllipse(cloudX - radius, cloudY - radius, radius*2, radius*2);
+            }
+        }
 
-            int brightness = qrand() % 200 + 55;
-            painter.setPen(QColor(brightness, brightness, brightness));
-            painter.setBrush(QColor(brightness, brightness, brightness));
-
-            int size = (qrand() % 4) + 1;
-            painter.drawEllipse(x, y, size, size);
+        // Add realistic star field for deep space image
+        for (int star = 0; star < 1000; ++star) {
+            int x = qrand() % deepSpaceImage.width();
+            int y = qrand() % deepSpaceImage.height();
+            
+            int brightness = 30 + (qrand() % 225);
+            int size = 1;
+            
+            // Occasional bright stars
+            if (qrand() % 50 == 0) {
+                brightness = 200 + (qrand() % 55);
+                size = 2 + (qrand() % 2);
+            }
+            
+            QColor starColor(brightness, brightness * 0.95, brightness * 0.9);
+            painter.setPen(starColor);
+            painter.setBrush(starColor);
+            painter.drawEllipse(x-size/2, y-size/2, size, size);
         }
 
         painter.end();
 
-        // Save the image
-        QString fileName = QString("%1/FinalStackedMaster.tiff").arg(dirPath);
-        if (masterImage.save(fileName, "TIFF")) {
-            qDebug() << "Successfully created dummy stacked image:" << fileName;
+        // Save the deep space image
+        QString masterFileName = QString("%1/FinalStackedMaster.tiff").arg(dirPath);
+        if (deepSpaceImage.save(masterFileName, "TIFF")) {
+            qDebug() << "Successfully created realistic deep-space image:" << masterFileName;
         } else {
-            qDebug() << "Failed to save stacked image:" << fileName;
+            qDebug() << "Failed to save deep-space image:" << masterFileName;
         }
 
-        // Create some individual frame images
-        for (int frame = 1; frame <= 3; ++frame) {
+        // Create some individual frame images (slightly different each time)
+        for (int frame = 1; frame <= 5; ++frame) {
             QString frameFileName = QString("%1/frame_%2.jpg").arg(dirPath).arg(frame);
-            if (masterImage.save(frameFileName, "JPEG", 90)) {
+            
+            // Add slight variations to simulate individual exposures
+            QImage frameImage = deepSpaceImage.copy();
+            QPainter framePainter(&frameImage);
+            
+            // Add some random noise and slight offset
+            for (int noise = 0; noise < 1000; ++noise) {
+                int x = qrand() % frameImage.width();
+                int y = qrand() % frameImage.height();
+                QColor pixel = frameImage.pixelColor(x, y);
+                int variation = (qrand() % 20) - 10;
+                pixel.setRed(qBound(0, pixel.red() + variation, 255));
+                pixel.setGreen(qBound(0, pixel.green() + variation, 255));
+                pixel.setBlue(qBound(0, pixel.blue() + variation, 255));
+                frameImage.setPixelColor(x, y, pixel);
+            }
+            
+            framePainter.end();
+            
+            if (frameImage.save(frameFileName, "JPEG", 90)) {
                 qDebug() << "Created frame image:" << frameFileName;
             }
         }

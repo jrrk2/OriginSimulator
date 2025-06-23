@@ -69,6 +69,10 @@ private:
     void createDummyImages();
     void setupTimers();
     void setupConnections();
+    void printRuntimeInfo();                    // NEW
+    void openSimulatorDirectoryInFinder();      // NEW
+    void cleanupApplicationSupportFiles();      // NEW
+
 };
 
 #endif // CELESTRONORIGINSIMULATOR_H
