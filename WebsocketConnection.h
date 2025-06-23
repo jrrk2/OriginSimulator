@@ -19,7 +19,10 @@ public:
     // Start automatic ping cycle (telescope initiates pings)
     void startPingCycle(int intervalMs = 5000);
     void stopPingCycle();
-    void initializePingCycle(); // NEW: Proper initialization
+    
+    // Debug and monitoring methods
+    void resetPingState();
+    void verifyTimerSetup();
 
 signals:
     void textMessageReceived(const QString &message);
@@ -40,14 +43,13 @@ private:
     QTimer *m_autoPingTimer;
     bool m_waitingForPong;
     QByteArray m_pendingData;    // For handling incomplete frames
-    int m_pingCounter = 0;
-    int m_missedPongCount = 0;
+    int m_pingCounter;
+    int m_missedPongCount;
   
     void sendFrame(quint8 opcode, const QByteArray &payload, bool masked = false);
-    void processFrame(const QByteArray &data);
-    void debugFrame(const QByteArray &data, const QString &direction); // NEW: Debug helper
-    void resetPingState();
-    void verifyTimerSetup();
+    
+    // CRITICAL: Updated method signature to return frame size
+    int processFrame(const QByteArray &data);
 };
 
 #endif // WEBSOCKETCONNECTION_H

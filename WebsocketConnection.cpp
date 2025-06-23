@@ -70,8 +70,6 @@ void WebSocketConnection::sendFrame(quint8 opcode, const QByteArray &payload, bo
     m_socket->write(frame);
 }
 
-// In WebSocketConnection.cpp, make sure your performHandshake method includes this:
-
 bool WebSocketConnection::performHandshake(const QByteArray &requestData) {
     QString request = QString::fromUtf8(requestData);
     QStringList lines = request.split("\r\n");
@@ -103,13 +101,13 @@ bool WebSocketConnection::performHandshake(const QByteArray &requestData) {
     m_socket->write(response.toUtf8());
     m_handshakeComplete = true;
     
-    // CRITICAL: Start ping cycle immediately and ensure it continues
+    // Start ping cycle after handshake
     QTimer::singleShot(1000, this, [this]() {
         if (m_handshakeComplete && m_socket && m_socket->state() == QAbstractSocket::ConnectedState) {
             qDebug() << "Starting continuous ping cycle every 5 seconds";
-            startPingCycle(5000); // This should create a repeating timer
+            startPingCycle(5000);
             
-            // Send first ping immediately
+            // Send first ping after a short delay
             QTimer::singleShot(100, this, &WebSocketConnection::sendAutomaticPing);
         }
     });
@@ -121,12 +119,21 @@ void WebSocketConnection::handleData() {
     if (!m_handshakeComplete) return;
     
     QByteArray data = m_socket->readAll();
-    processFrame(data);
+    m_pendingData.append(data);
+    
+    // Process all complete frames in the buffer
+    while (!m_pendingData.isEmpty()) {
+        int frameSize = processFrame(m_pendingData);
+        if (frameSize <= 0) {
+            break; // No complete frame available
+        }
+        m_pendingData.remove(0, frameSize);
+    }
 }
 
-// In WebSocketConnection::processFrame function
-void WebSocketConnection::processFrame(const QByteArray &data) {
-    if (data.size() < 2) return;
+// CRITICAL FIX: Return frame size to properly handle multiple frames
+int WebSocketConnection::processFrame(const QByteArray &data) {
+    if (data.size() < 2) return 0; // Not enough data for a frame header
     
     quint8 firstByte = data[0];
     quint8 secondByte = data[1];
@@ -139,11 +146,11 @@ void WebSocketConnection::processFrame(const QByteArray &data) {
     int headerSize = 2;
     
     if (payloadLength == 126) {
-        if (data.size() < 4) return;
+        if (data.size() < 4) return 0;
         payloadLength = (quint8(data[2]) << 8) | quint8(data[3]);
         headerSize = 4;
     } else if (payloadLength == 127) {
-        if (data.size() < 10) return;
+        if (data.size() < 10) return 0;
         payloadLength = 0;
         for (int i = 0; i < 8; ++i) {
             payloadLength = (payloadLength << 8) | quint8(data[2 + i]);
@@ -155,83 +162,69 @@ void WebSocketConnection::processFrame(const QByteArray &data) {
         headerSize += 4; // Mask key
     }
     
-    // FIX: Check if we have a complete frame
+    // Check if we have a complete frame
     if (data.size() < headerSize + payloadLength) {
-        // We don't have a complete frame yet, store it for later
-        m_pendingData.append(data);
-        return;
+        return 0; // Incomplete frame
     }
     
-    // If we have pending data from earlier, process it together
-    QByteArray frameData = data;
-    if (!m_pendingData.isEmpty()) {
-        frameData = m_pendingData + data;
-        m_pendingData.clear();
-    }
-    
-    QByteArray payload = frameData.mid(headerSize, payloadLength);
+    QByteArray payload = data.mid(headerSize, payloadLength);
     
     if (masked && headerSize >= 6) {
-        QByteArray maskKey = frameData.mid(headerSize - 4, 4);
+        QByteArray maskKey = data.mid(headerSize - 4, 4);
         for (int i = 0; i < payload.size(); ++i) {
             payload[i] = payload[i] ^ maskKey[i % 4];
         }
     }
     
+    // CRITICAL: Process the frame based on opcode
     switch (opcode) {
         case 0x01: // Text frame
             emit textMessageReceived(QString::fromUtf8(payload));
             break;
+            
         case 0x08: // Close frame
             qDebug() << "WebSocket close frame received";
-            // FIX: Don't stop ping cycle and don't disconnect - keep connection alive
-            //stopPingCycle();
-            //m_socket->disconnectFromHost();
-            
-            // Send a close frame back as acknowledgment but don't actually close
+            // Send close frame back but keep connection handling it gracefully
             sendFrame(0x08, payload);
+            
+            // Don't actually disconnect - let the client decide
+            stopPingCycle();
+            QTimer::singleShot(1000, this, [this]() {
+                if (m_socket && m_socket->state() == QAbstractSocket::ConnectedState) {
+                    m_socket->disconnectFromHost();
+                }
+            });
             break;
-        case 0x09: // Ping frame (client sent us a ping)
-            qDebug() << "WebSocket ping received from client, sending pong";
+            
+        case 0x09: // Ping frame (client sent us a ping - CRITICAL FIX!)
+            qDebug() << "PING received from client, sending PONG response";
+            // IMMEDIATELY send pong response - this was the missing piece!
             sendPongMessage(payload);
             emit pingReceived(payload);
             break;
+            
         case 0x0A: // Pong frame (client responded to our ping)
-            qDebug() << "Pong received at" << QTime::currentTime().toString("hh:mm:ss.zzz");
+            qDebug() << "PONG received from client at" << QTime::currentTime().toString("hh:mm:ss.zzz");
             
             if (m_pingTimeoutTimer->isActive()) {
                 m_pingTimeoutTimer->stop();
             }
             m_waitingForPong = false;
-            
-            // Reset the missed pong counter since we got a response
-            m_missedPongCount = 0;
+            m_missedPongCount = 0; // Reset counter
             
             emit pongReceived(payload);
-	    break;
+            break;
+            
         default:
             qDebug() << "Unknown WebSocket frame opcode:" << opcode;
             break;
     }
     
-    // FIX: Process any remaining data (in case multiple frames were received)
-    if (frameData.size() > headerSize + payloadLength) {
-        QByteArray remainingData = frameData.mid(headerSize + payloadLength);
-        processFrame(remainingData);
-    }
+    // Return the size of the processed frame
+    return headerSize + payloadLength;
 }
-// Enhanced WebSocketConnection to match real telescope ping/pong behavior
-// Replace the sendAutomaticPing method with this more realistic version:
-
-// CRITICAL FIX: Update sendAutomaticPing method in WebSocketConnection.cpp
-// The issue is that the ping cycle stops after receiving a pong
-// Replace your sendAutomaticPing method with this version:
 
 void WebSocketConnection::sendAutomaticPing() {
-    // CRITICAL: Don't skip pings - the client expects them every 5 seconds regardless
-    // The original code had: if (m_waitingForPong) return; 
-    // This is WRONG - we must keep pinging even if no pong was received
-    
     if (!m_handshakeComplete || !m_socket || m_socket->state() != QAbstractSocket::ConnectedState) {
         qDebug() << "Cannot send ping - connection not ready";
         return;
@@ -255,27 +248,24 @@ void WebSocketConnection::sendAutomaticPing() {
     sendPingMessage(pingPayload);
     m_pingCounter++;
     
-    // CRITICAL: Reset any previous timeout and start a new one
+    // Start timeout for this specific ping
     if (m_pingTimeoutTimer->isActive()) {
         m_pingTimeoutTimer->stop();
     }
     m_waitingForPong = true;
-    m_pingTimeoutTimer->start(10000); // 10 second timeout for this specific ping
+    m_pingTimeoutTimer->start(10000); // 10 second timeout
 }
 
 void WebSocketConnection::onPingTimeout() {
     qDebug() << "Ping timeout for ping counter:" << (m_pingCounter - 1);
     
-    // Don't disconnect immediately - real telescope is more tolerant
     m_waitingForPong = false;
-    
-    // Increment missed pong counter
     m_missedPongCount++;
     
     qDebug() << "Missed consecutive pongs:" << m_missedPongCount;
     
-    // Only disconnect after missing 2 consecutive pongs
-    if (m_missedPongCount >= 2) {
+    // Only disconnect after missing 3 consecutive pongs (more tolerant)
+    if (m_missedPongCount >= 3) {
         qDebug() << "Too many missed pongs, disconnecting client";
         
         QByteArray closePayload;
@@ -292,14 +282,12 @@ void WebSocketConnection::onPingTimeout() {
             }
         });
         
-        // Reset counter for potential future connections
         m_missedPongCount = 0;
     }
     
     emit pingTimeout();
 }
 
-// Also update the constructor to initialize the new member:
 WebSocketConnection::WebSocketConnection(QTcpSocket *socket, QObject *parent) 
     : QObject(parent), m_socket(socket), m_handshakeComplete(false), 
       m_waitingForPong(false), m_pingCounter(0), m_missedPongCount(0) {
@@ -308,20 +296,19 @@ WebSocketConnection::WebSocketConnection(QTcpSocket *socket, QObject *parent)
     connect(m_socket, &QTcpSocket::readyRead, this, &WebSocketConnection::handleData);
     connect(m_socket, &QTcpSocket::disconnected, this, &WebSocketConnection::disconnected);
     
-    // Initialize ping timeout timer
+    // Initialize ping timeout timer (more generous timeout)
     m_pingTimeoutTimer = new QTimer(this);
     m_pingTimeoutTimer->setSingleShot(true);
-    m_pingTimeoutTimer->setInterval(8000);
+    m_pingTimeoutTimer->setInterval(15000); // 15 second timeout (was 8s)
     connect(m_pingTimeoutTimer, &QTimer::timeout, this, &WebSocketConnection::onPingTimeout);
     
     // Initialize auto ping timer  
     m_autoPingTimer = new QTimer(this);
     m_autoPingTimer->setSingleShot(false);
     
-    qDebug() << "WebSocketConnection created, timers and counters initialized";
+    qDebug() << "WebSocketConnection created with enhanced ping/pong handling";
 }
 
-// Add a method to reset the connection state when needed:
 void WebSocketConnection::resetPingState() {
     m_pingCounter = 0;
     m_missedPongCount = 0;
@@ -334,9 +321,8 @@ void WebSocketConnection::resetPingState() {
     qDebug() << "Ping state reset";
 }
 
-// Update the verifyTimerSetup method to include the new member:
 void WebSocketConnection::verifyTimerSetup() {
-    qDebug() << "=== Timer Verification ===";
+    qDebug() << "=== Enhanced Timer Verification ===";
     qDebug() << "Auto ping timer exists:" << (m_autoPingTimer != nullptr);
     if (m_autoPingTimer) {
         qDebug() << "Auto ping timer active:" << m_autoPingTimer->isActive();
@@ -355,5 +341,6 @@ void WebSocketConnection::verifyTimerSetup() {
     qDebug() << "Ping counter:" << m_pingCounter;
     qDebug() << "Missed pong count:" << m_missedPongCount;
     qDebug() << "Waiting for pong:" << m_waitingForPong;
-    qDebug() << "========================";
+    qDebug() << "Pending data size:" << m_pendingData.size();
+    qDebug() << "=================================";
 }
