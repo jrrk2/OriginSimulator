@@ -26,9 +26,9 @@ CelestronOriginSimulator::CelestronOriginSimulator(QObject *parent) : QObject(pa
     setupRubinIntegration();
     
     if (m_tcpServer->listen(QHostAddress::Any, SERVER_PORT)) {
-        qDebug() << "Origin simulator listening on port" << SERVER_PORT;
-        qDebug() << "WebSocket: ws://localhost/SmartScope-1.0/mountControlEndpoint";
-        qDebug() << "HTTP Images: http://localhost/SmartScope-1.0/dev2/Images/Temp/";
+//         qDebug() << "Origin simulator listening on port" << SERVER_PORT;
+//         qDebug() << "WebSocket: ws://localhost/SmartScope-1.0/mountControlEndpoint";
+//         qDebug() << "HTTP Images: http://localhost/SmartScope-1.0/dev2/Images/Temp/";
         
         setupConnections();
         setupTimers();
@@ -40,7 +40,7 @@ CelestronOriginSimulator::CelestronOriginSimulator(QObject *parent) : QObject(pa
         // First broadcast immediately
         QTimer::singleShot(100, this, &CelestronOriginSimulator::sendBroadcast);
     } else {
-        qDebug() << "Failed to start Origin simulator:" << m_tcpServer->errorString();
+//         qDebug() << "Failed to start Origin simulator:" << m_tcpServer->errorString();
     }
 }
 
@@ -75,21 +75,21 @@ void CelestronOriginSimulator::setupRubinIntegration() {
     };
     
     m_rubinClient->onTilesFetched = [this](int successful, int total) {
-        qDebug() << "Rubin fetch complete:" << successful << "/" << total << "tiles";
+//         qDebug() << "Rubin fetch complete:" << successful << "/" << total << "tiles";
     };
     
     m_rubinClient->onFetchProgress = [this](int completed, int total) {
-        qDebug() << "Rubin fetch progress:" << completed << "/" << total;
+//         qDebug() << "Rubin fetch progress:" << completed << "/" << total;
     };
         
-    qDebug() << "Rubin Observatory integration initialized";
-    qDebug() << "Rubin images will be saved to:" << rubinDir;
+//     qDebug() << "Rubin Observatory integration initialized";
+//     qDebug() << "Rubin images will be saved to:" << rubinDir;
 }
 
 // Add these new slot methods to CelestronOriginSimulator.cpp:
 
 void CelestronOriginSimulator::onRubinImageReady(const QString& filename) {
-    qDebug() << "Rubin Observatory image ready:" << filename;
+//     qDebug() << "Rubin Observatory image ready:" << filename;
     
     // Extract just the filename for the telescope's image system
     QFileInfo fileInfo(filename);
@@ -103,11 +103,11 @@ void CelestronOriginSimulator::onRubinImageReady(const QString& filename) {
     // Notify all connected clients about the new image
     m_statusSender->sendNewImageReadyToAll();
     
-    qDebug() << "Telescope updated with Rubin image:" << relativePath;
+//     qDebug() << "Telescope updated with Rubin image:" << relativePath;
 }
 
 void CelestronOriginSimulator::onRubinTilesAvailable(const QStringList& filenames) {
-    qDebug() << "Rubin Observatory tiles available:" << filenames.size();
+//     qDebug() << "Rubin Observatory tiles available:" << filenames.size();
     
     if (!filenames.isEmpty()) {
         // Use the first available tile
@@ -116,13 +116,13 @@ void CelestronOriginSimulator::onRubinTilesAvailable(const QStringList& filename
         // Log all available files
         for (const QString& file : filenames) {
             QFileInfo info(file);
-            qDebug() << "  Available:" << info.fileName() << "(" << info.size() << "bytes)";
+//             qDebug() << "  Available:" << info.fileName() << "(" << info.size() << "bytes)";
         }
     }
 }
 
 void CelestronOriginSimulator::onRubinFetchError(const QString& error_message) {
-    qDebug() << "Rubin Observatory fetch error:" << error_message;
+//     qDebug() << "Rubin Observatory fetch error:" << error_message;
     
     // Could send error notification to clients if desired
     QJsonObject errorNotification;
@@ -198,7 +198,7 @@ void CelestronOriginSimulator::updateInitialization() {
     // After several updates, set focus position (matches real telescope behavior)
     if (m_initUpdateCount == 5) {
         m_telescopeState->initInfo.positionOfFocus = 18617; // Use value from real trace
-        qDebug() << "Initialization found focus position:" << m_telescopeState->initInfo.positionOfFocus;
+//         qDebug() << "Initialization found focus position:" << m_telescopeState->initInfo.positionOfFocus;
     }
     
     // After more updates, find first alignment point
@@ -206,7 +206,7 @@ void CelestronOriginSimulator::updateInitialization() {
         m_telescopeState->initInfo.numPoints = 1;
         m_telescopeState->initInfo.numPointsRemaining = 1;
         m_telescopeState->initInfo.percentComplete = 50;
-        qDebug() << "Initialization found first alignment point";
+//         qDebug() << "Initialization found first alignment point";
     }
     
     // Randomly decide if initialization fails (about 50% chance like real telescope)
@@ -241,7 +241,7 @@ void CelestronOriginSimulator::completeInitialization() {
     QTimer::singleShot(1000, this, [this]() {
         m_telescopeState->state = "IDLE";
         m_statusSender->sendTaskControllerStatusToAll();
-        qDebug() << "Initialization complete - telescope ready";
+//         qDebug() << "Initialization complete - telescope ready";
     });
 }
 
@@ -268,7 +268,7 @@ void CelestronOriginSimulator::failInitialization() {
     // Send failure status
     m_statusSender->sendTaskControllerStatusToAll();
     
-    qDebug() << "Initialization failed with error -78";
+//     qDebug() << "Initialization failed with error -78";
 }
 
 void CelestronOriginSimulator::handleNewConnection() {
@@ -326,7 +326,7 @@ void CelestronOriginSimulator::handleIncomingData(QTcpSocket *socket) {
     QString method = requestParts[0];
     QString path = requestParts[1];
     
-    qDebug() << "Origin Protocol Request:" << method << path;
+//     qDebug() << "Origin Protocol Request:" << method << path;
     
     // Check if this is a WebSocket upgrade request
     bool isWebSocketUpgrade = false;
@@ -358,19 +358,19 @@ void CelestronOriginSimulator::handleIncomingData(QTcpSocket *socket) {
 // Perform handshake FIRST, then transfer socket ownership
 
 void CelestronOriginSimulator::handleWebSocketUpgrade(QTcpSocket *socket, const QByteArray &requestData) {
-    qDebug() << "*** STARTING WEBSOCKET UPGRADE PROCESS ***";
-    qDebug() << "Request data size:" << requestData.size();
+//     // qDebug() << "*** STARTING WEBSOCKET UPGRADE PROCESS ***";
+//     qDebug() << "Request data size:" << requestData.size();
     
     // Create WebSocketConnection but DON'T disconnect protocol detector yet
     WebSocketConnection *wsConn = new WebSocketConnection(socket, this, false); // false = don't take ownership yet
     
     // FIRST: Perform the handshake using the request data
     if (wsConn->performHandshake(requestData)) {
-        qDebug() << "*** HANDSHAKE SUCCESSFUL - TRANSFERRING SOCKET OWNERSHIP ***";
+//         // qDebug() << "*** HANDSHAKE SUCCESSFUL - TRANSFERRING SOCKET OWNERSHIP ***";
         
         // CRITICAL: NOW disconnect the protocol detector since handshake worked
         disconnect(socket, &QTcpSocket::readyRead, this, nullptr);
-        qDebug() << "*** PROTOCOL DETECTOR DISCONNECTED ***";
+//         // qDebug() << "*** PROTOCOL DETECTOR DISCONNECTED ***";
         
         // Clear any pending data since we're switching protocols  
         m_pendingRequests.remove(socket);
@@ -398,7 +398,7 @@ void CelestronOriginSimulator::handleWebSocketUpgrade(QTcpSocket *socket, const 
         connect(wsConn, &WebSocketConnection::disconnected, 
                 this, &CelestronOriginSimulator::onWebSocketDisconnected);
         
-        qDebug() << "WebSocket connection established for telescope control";
+//         qDebug() << "WebSocket connection established for telescope control";
         
         // Send initial status updates after a brief delay
         QTimer::singleShot(1000, this, [this, wsConn]() {
@@ -414,7 +414,7 @@ void CelestronOriginSimulator::handleWebSocketUpgrade(QTcpSocket *socket, const 
             }
         });
     } else {
-        qDebug() << "*** HANDSHAKE FAILED - KEEPING PROTOCOL DETECTOR ***";
+//         // qDebug() << "*** HANDSHAKE FAILED - KEEPING PROTOCOL DETECTOR ***";
         
         // Handshake failed, so keep the original protocol detector connected
         // Don't disconnect anything - let it continue as HTTP
@@ -426,7 +426,7 @@ void CelestronOriginSimulator::handleWebSocketUpgrade(QTcpSocket *socket, const 
 }
 
 void CelestronOriginSimulator::handleHttpImageRequest(QTcpSocket *socket, const QString &path) {
-    qDebug() << "Handling HTTP image request for path:" << path;
+//     qDebug() << "Handling HTTP image request for path:" << path;
 
     // Extract filename from path: /SmartScope-1.0/dev2/Images/Temp/0.jpg -> 0.jpg
     QString fileName = path.split("/").last();
@@ -436,25 +436,25 @@ void CelestronOriginSimulator::handleHttpImageRequest(QTcpSocket *socket, const 
         fileName = fileName.split("?").first();
     }
 
-    qDebug() << "Extracted filename:" << fileName;
+//     qDebug() << "Extracted filename:" << fileName;
 
     QString fullPath = QString("/Users/jonathan/OriginSimulator/simulator_data/Images/Temp/%1").arg(fileName);
-    qDebug() << "Looking for file at:" << fullPath;
+//     qDebug() << "Looking for file at:" << fullPath;
 
     QFile imageFile(fullPath);
     if (!imageFile.exists()) {
-        qDebug() << "Image file does not exist:" << fullPath;
+//         qDebug() << "Image file does not exist:" << fullPath;
 
         // List what files actually exist in the directory
         QDir tempDir("simulator_data/Images/Temp");
         if (tempDir.exists()) {
-            qDebug() << "Available files in simulator_data/Images/Temp:";
+//             qDebug() << "Available files in simulator_data/Images/Temp:";
             QStringList files = tempDir.entryList(QDir::Files);
             for (const QString &file : files) {
-                qDebug() << "  " << file;
+//                 qDebug() << "  " << file;
             }
         } else {
-            qDebug() << "Directory simulator_data/Images/Temp does not exist!";
+//             qDebug() << "Directory simulator_data/Images/Temp does not exist!";
         }
 
         sendHttpResponse(socket, 404, "text/plain", "Image not found");
@@ -462,7 +462,7 @@ void CelestronOriginSimulator::handleHttpImageRequest(QTcpSocket *socket, const 
     }
 
     if (!imageFile.open(QIODevice::ReadOnly)) {
-        qDebug() << "Failed to open image file:" << fullPath;
+//         qDebug() << "Failed to open image file:" << fullPath;
         sendHttpResponse(socket, 500, "text/plain", "Failed to read image");
         return;
     }
@@ -478,7 +478,7 @@ void CelestronOriginSimulator::handleHttpImageRequest(QTcpSocket *socket, const 
         contentType = "image/tiff";
     }
 
-    qDebug() << "Serving image:" << fileName << "(" << imageData.size() << "bytes) with content-type:" << contentType;
+//     qDebug() << "Serving image:" << fileName << "(" << imageData.size() << "bytes) with content-type:" << contentType;
 
     sendHttpResponse(socket, 200, contentType, imageData);
 }
@@ -510,7 +510,7 @@ void CelestronOriginSimulator::handleHttpAstroImageRequest(QTcpSocket *socket, c
     }
     
     sendHttpResponse(socket, 200, contentType, imageData);
-    qDebug() << "Served Origin astrophotography image:" << fileName;
+//     qDebug() << "Served Origin astrophotography image:" << fileName;
 }
 
 void CelestronOriginSimulator::sendHttpResponse(QTcpSocket *socket, int statusCode, 
@@ -545,7 +545,7 @@ void CelestronOriginSimulator::processWebSocketCommand(const QString &message) {
     
     QJsonDocument doc = QJsonDocument::fromJson(message.toUtf8());
     if (!doc.isObject()) {
-        qDebug() << "Received invalid JSON:" << message;
+//         qDebug() << "Received invalid JSON:" << message;
         return;
     }
     
@@ -556,7 +556,7 @@ void CelestronOriginSimulator::processWebSocketCommand(const QString &message) {
     QString destination = obj["Destination"].toString();
     QString source = obj["Source"].toString();
     
-    qDebug() << "Received WebSocket command:" << command << "to" << destination << "from" << source;
+//     qDebug() << "Received WebSocket command:" << command << "to" << destination << "from" << source;
     
     // Handle status requests directly
     if (command == "GetStatus") {
@@ -626,7 +626,7 @@ void CelestronOriginSimulator::sendBroadcast() {
                 BROADCAST_PORT
             );
             
-            qDebug() << "Sent broadcast:" << broadcastMessage;
+//             qDebug() << "Sent broadcast:" << broadcastMessage;
         }
     }
 }
@@ -639,9 +639,9 @@ void CelestronOriginSimulator::updateSlew() {
     
     if (slewProgress >= 100) {
         // ADD THESE DEBUG LINES BEFORE COORDINATE UPDATE:
-        qDebug() << "*** SLEW COMPLETING ***";
-        qDebug() << "Before update - RA:" << m_telescopeState->ra << "Dec:" << m_telescopeState->dec;
-        qDebug() << "Target RA:" << m_telescopeState->targetRa << "Target Dec:" << m_telescopeState->targetDec;
+//         // qDebug() << "*** SLEW COMPLETING ***";
+//         qDebug() << "Before update - RA:" << m_telescopeState->ra << "Dec:" << m_telescopeState->dec;
+//         qDebug() << "Target RA:" << m_telescopeState->targetRa << "Target Dec:" << m_telescopeState->targetDec;
         
         // Slew complete
         m_telescopeState->isGotoOver = true;
@@ -653,7 +653,7 @@ void CelestronOriginSimulator::updateSlew() {
         m_slewTimer->stop();
         slewProgress = 0;
 
-	qDebug() << "After update - RA:" << m_telescopeState->ra << "Dec:" << m_telescopeState->dec;
+// 	qDebug() << "After update - RA:" << m_telescopeState->ra << "Dec:" << m_telescopeState->dec;
 		
         // Update mount status
         m_statusSender->sendMountStatusToAll();
@@ -661,18 +661,18 @@ void CelestronOriginSimulator::updateSlew() {
 	// Add delay to ensure coordinates are fully updated
 	QTimer::singleShot(100, this, [this]() {
 	    if (m_rubinClient) {
-		qDebug() << "Slew complete - fetching Rubin Observatory data for new position";
+// 		qDebug() << "🎯 Slew complete - fetching Rubin Observatory data for new position";
 		m_rubinClient->fetchTilesForCurrentPointing(m_telescopeState);
 	    }
 	});
 
         // TRIGGER RUBIN FETCH FOR NEW POSITION
         if (m_rubinClient) {
-            qDebug() << "Slew complete - fetching Rubin Observatory data for new position";
+//             qDebug() << "🎯 Slew complete - fetching Rubin Observatory data for new position";
             m_rubinClient->fetchTilesForCurrentPointing(m_telescopeState);
         }
         
-        qDebug() << "Slew complete";
+//         qDebug() << "🎯 Slew complete";
     }
 }
 
@@ -688,7 +688,7 @@ void CelestronOriginSimulator::updateImaging() {
         m_telescopeState->isImaging = false;
         m_imagingTimer->stop();
         
-        qDebug() << "Imaging complete";
+//         qDebug() << "Imaging complete";
     }
 }
 
@@ -702,19 +702,19 @@ void CelestronOriginSimulator::createDummyImages() {
     QString tempDir = QDir(appSupportDir).absoluteFilePath("Images/Temp");
     QString astroDir = QDir(appSupportDir).absoluteFilePath("Images/Astrophotography");
 
-    qDebug() << "Home directory:" << homeDir;
-    qDebug() << "Application Support directory:" << appSupportDir;
-    qDebug() << "Live images directory:" << tempDir;
-    qDebug() << "Astrophotography directory:" << astroDir;
+//     qDebug() << "Home directory:" << homeDir;
+//     qDebug() << "Application Support directory:" << appSupportDir;
+//     qDebug() << "Live images directory:" << tempDir;
+//     qDebug() << "Astrophotography directory:" << astroDir;
 
     // Create the directory structure
     if (!QDir().mkpath(tempDir)) {
-        qDebug() << "Failed to create directory:" << tempDir;
+//         qDebug() << "Failed to create directory:" << tempDir;
         return;
     }
 
     if (!QDir().mkpath(astroDir)) {
-        qDebug() << "Failed to create directory:" << astroDir;
+//         qDebug() << "Failed to create directory:" << astroDir;
         return;
     }
 
@@ -722,7 +722,7 @@ void CelestronOriginSimulator::createDummyImages() {
     m_absoluteTempDir = tempDir;
     m_absoluteAstroDir = astroDir;
 
-    qDebug() << "Creating realistic astronomy images in:" << tempDir;
+//     qDebug() << "Creating realistic astronomy images in:" << tempDir;
 
     // Create 10 realistic live view images (0.jpg to 9.jpg)
     for (int i = 0; i < 10; ++i) {
@@ -828,17 +828,17 @@ void CelestronOriginSimulator::createDummyImages() {
         QString fileName = QDir(tempDir).absoluteFilePath(QString("%1.jpg").arg(i));
 
         if (image.save(fileName, "JPEG", 95)) {
-            qDebug() << "Successfully created realistic astronomy image:" << fileName;
+//             qDebug() << "Successfully created realistic astronomy image:" << fileName;
 
             // Verify the file exists and get its size
             QFileInfo fileInfo(fileName);
             if (fileInfo.exists()) {
-                qDebug() << "  File size:" << fileInfo.size() << "bytes";
+//                 qDebug() << "  File size:" << fileInfo.size() << "bytes";
             } else {
-                qDebug() << "  ERROR: File was not created successfully!";
+//                 qDebug() << "  ERROR: File was not created successfully!";
             }
         } else {
-            qDebug() << "Failed to save image:" << fileName;
+//             qDebug() << "Failed to save image:" << fileName;
         }
     }
 
@@ -846,7 +846,7 @@ void CelestronOriginSimulator::createDummyImages() {
     for (const QString &target : m_telescopeState->astrophotographyDirs) {
         QString dirPath = QDir(astroDir).absoluteFilePath(target);
         if (!QDir().mkpath(dirPath)) {
-            qDebug() << "Failed to create astrophotography directory:" << dirPath;
+//             qDebug() << "Failed to create astrophotography directory:" << dirPath;
             continue;
         }
 
@@ -947,9 +947,9 @@ void CelestronOriginSimulator::createDummyImages() {
         // Save the deep space image with absolute path
         QString masterFileName = QDir(dirPath).absoluteFilePath("FinalStackedMaster.tiff");
         if (deepSpaceImage.save(masterFileName, "TIFF")) {
-            qDebug() << "Successfully created realistic deep-space image:" << masterFileName;
+//             qDebug() << "Successfully created realistic deep-space image:" << masterFileName;
         } else {
-            qDebug() << "Failed to save deep-space image:" << masterFileName;
+//             qDebug() << "Failed to save deep-space image:" << masterFileName;
         }
 
         // Create some individual frame images (slightly different each time)
@@ -975,24 +975,24 @@ void CelestronOriginSimulator::createDummyImages() {
             framePainter.end();
             
             if (frameImage.save(frameFileName, "JPEG", 90)) {
-                qDebug() << "Created frame image:" << frameFileName;
+//                 qDebug() << "Created frame image:" << frameFileName;
             }
         }
     }
 
     // List all created files for verification
-    qDebug() << "Verification - Files in" << tempDir << ":";
+//     qDebug() << "Verification - Files in" << tempDir << ":";
     QDir tempDirObj(tempDir);
     QStringList tempFiles = tempDirObj.entryList(QDir::Files);
     for (const QString &file : tempFiles) {
         QFileInfo fileInfo(tempDirObj.absoluteFilePath(file));
-        qDebug() << "  " << file << "(" << fileInfo.size() << "bytes)";
+//         qDebug() << "  " << file << "(" << fileInfo.size() << "bytes)";
     }
     
     // Print cleanup information
-    qDebug() << "Images created in Application Support directory:" << appSupportDir;
-    qDebug() << "Location: ~/Library/Application Support/OriginSimulator/";
-    qDebug() << "To view in Finder: open ~/Library/Application\\ Support/OriginSimulator/";
+//     qDebug() << "Images created in Application Support directory:" << appSupportDir;
+//     qDebug() << "Location: ~/Library/Application Support/OriginSimulator/";
+//     qDebug() << "To view in Finder: open ~/Library/Application\\ Support/OriginSimulator/";
 }
 
 
@@ -1066,7 +1066,7 @@ void CelestronOriginSimulator::sendStatusUpdates() {
 // Add this method to monitor connection health:
 
 void CelestronOriginSimulator::checkConnectionHealth() {
-    qDebug() << "Active WebSocket connections:" << m_webSocketClients.size();
+//     qDebug() << "Active WebSocket connections:" << m_webSocketClients.size();
     
     for (WebSocketConnection *wsConn : m_webSocketClients) {
         // Check if connection is still alive
@@ -1078,19 +1078,19 @@ void CelestronOriginSimulator::checkConnectionHealth() {
 
 void CelestronOriginSimulator::handleWebSocketPing(const QByteArray &payload) {
     WebSocketConnection *wsConn = qobject_cast<WebSocketConnection*>(sender());
-    qDebug() << "WebSocket ping received from client, payload size:" << payload.size();
+//     qDebug() << "WebSocket ping received from client, payload size:" << payload.size();
     // The WebSocketConnection automatically sends pong, we just log it here
 }
 
 void CelestronOriginSimulator::handleWebSocketPong(const QByteArray &payload) {
     WebSocketConnection *wsConn = qobject_cast<WebSocketConnection*>(sender());
-    qDebug() << "WebSocket pong received from client, payload size:" << payload.size();
+//     qDebug() << "WebSocket pong received from client, payload size:" << payload.size();
     // Client responded to our ping successfully
 }
 
 void CelestronOriginSimulator::handleWebSocketTimeout() {
     WebSocketConnection *wsConn = qobject_cast<WebSocketConnection*>(sender());
-    qDebug() << "WebSocket ping timeout occurred - client not responding";
+//     qDebug() << "WebSocket ping timeout occurred - client not responding";
     
     if (wsConn && m_webSocketClients.contains(wsConn)) {
         // Remove from active clients but don't delete yet - let disconnected signal handle cleanup
