@@ -232,7 +232,7 @@ void RubinHipsClient::fetchTilesAsync(const SkyCoordinates& coords, const QStrin
     m_totalFetches = tiles.size();
     m_completedFetches = 0;
     
-//     qDebug() << "Starting fetch of" << tiles.size() << "tiles for" << survey_name;
+        qDebug() << "Starting fetch of" << tiles.size() << "tiles for" << survey_name;
     
     // Start timeout monitoring
     if (!m_timeoutTimer->isActive()) {
@@ -284,7 +284,7 @@ void RubinHipsClient::fetchSingleTile(std::shared_ptr<HipsTile> tile, const QStr
     
     m_activeFetches++;
     
-//     qDebug() << "Fetching tile from:" << url;
+        qDebug() << "Fetching tile from:" << url;
 }
 
 QString RubinHipsClient::buildTileUrl(const HipsTile* tile, const QString& survey_name, const QString& format) const {
@@ -336,7 +336,7 @@ void RubinHipsClient::handleNetworkReply() {
             tile->is_loaded = true;
             m_totalBytesDownloaded += data.size();
             
-            if (0) qDebug() << "📥 Fetched tile:" << tile->healpix_pixel
+                    qDebug() << "📥 Fetched tile:" << tile->healpix_pixel
                      << "(" << data.size() << "bytes)";
             
             processFetchedTile(tile, survey_name);
@@ -345,7 +345,7 @@ void RubinHipsClient::handleNetworkReply() {
             tile->error_message = "Empty response";
         }
     } else {
-         if (0) qDebug() << "Network error for tile:" << tile->healpix_pixel 
+                 qDebug() << "Network error for tile:" << tile->healpix_pixel 
                  << reply->errorString();
         tile->error_message = reply->errorString();
     }
@@ -387,7 +387,7 @@ void RubinHipsClient::processFetchedTile(std::shared_ptr<HipsTile> tile, const Q
     QString filepath = QDir(m_imageDirectory).absoluteFilePath(filename);
     
     if (tile->saveToFile(filepath)) {
-//         qDebug() << "Saved Rubin tile:" << filename;
+        qDebug() << "Saved Rubin tile:" << filename;
         if (onImageReady) {
             onImageReady(filepath);
         }
@@ -395,7 +395,7 @@ void RubinHipsClient::processFetchedTile(std::shared_ptr<HipsTile> tile, const Q
         // Update telescope with new image
         updateTelescopeImages(QStringList() << filepath);
     } else {
-//         qDebug() << "Failed to save tile:" << filename;
+        qDebug() << "Failed to save tile:" << filename;
     }
 }
 
@@ -488,7 +488,7 @@ QString RubinHipsClient::generateRealisticImage(const SkyCoordinates& coords, co
     QString filepath = QDir(m_imageDirectory).absoluteFilePath(filename);
     
     if (image.save(filepath, "JPEG", 90)) {
-//         qDebug() << "Generated synthetic Rubin image:" << filename;
+        qDebug() << "Generated synthetic Rubin image:" << filename;
         return filepath;
     }
     
