@@ -13,6 +13,7 @@
 #include "WebSocketConnection.h"
 #include "CommandHandler.h"
 #include "StatusSender.h"
+#include "RubinHipsClient.h"
 
 // Constants
 const QString SERVER_NAME = "CelestronOriginSimulator";
@@ -40,6 +41,10 @@ private slots:
     void handleWebSocketPong(const QByteArray &payload);  // NEW
     void handleWebSocketTimeout();                        // NEW
     void checkConnectionHealth();                         // NEW
+    // Rubin Observatory integration slots
+    void onRubinImageReady(const QString& filename);
+    void onRubinTilesAvailable(const QStringList& filenames);
+    void onRubinFetchError(const QString& error_message);
 
 private:
     // Core components
@@ -48,7 +53,8 @@ private:
     TelescopeState *m_telescopeState;
     CommandHandler *m_commandHandler;
     StatusSender *m_statusSender;
-    
+    RubinHipsClient* m_rubinClient;
+
     // WebSocket management
     QList<WebSocketConnection*> m_webSocketClients;
     QMap<QTcpSocket*, QByteArray> m_pendingRequests;
@@ -89,6 +95,7 @@ private:
     void printRuntimeInfo();                    // NEW
     void openSimulatorDirectoryInFinder();      // NEW
     void cleanupApplicationSupportFiles();      // NEW
+    void setupRubinIntegration();
 
 };
 

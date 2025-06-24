@@ -22,6 +22,8 @@ CelestronOriginSimulator::CelestronOriginSimulator(QObject *parent) : QObject(pa
     // Initialize the dual protocol server
     m_tcpServer = new QTcpServer(this);
     m_udpSocket = new QUdpSocket(this);
+
+    setupRubinIntegration();
     
     if (m_tcpServer->listen(QHostAddress::Any, SERVER_PORT)) {
         qDebug() << "Origin simulator listening on port" << SERVER_PORT;
@@ -47,6 +49,81 @@ CelestronOriginSimulator::~CelestronOriginSimulator() {
         m_tcpServer->close();
     }
     qDeleteAll(m_webSocketClients);
+}
+
+
+void CelestronOriginSimulator::setupRubinIntegration() {
+    m_rubinClient = new RubinHipsClient(this);
+    
+    // Set up Rubin image directory to integrate with existing simulator structure
+    QString homeDir = QDir::homePath();
+    QString appSupportDir = QDir(homeDir).absoluteFilePath("Library/Application Support/OriginSimulator");
+    QString rubinDir = QDir(appSupportDir).absoluteFilePath("Images/Rubin");
+    m_rubinClient->setImageDirectory(rubinDir);
+    
+    // Connect Rubin client signals to telescope behavior
+    connect(m_rubinClient, &RubinHipsClient::imageReady, 
+            this, &CelestronOriginSimulator::onRubinImageReady);
+    
+    connect(m_rubinClient, &RubinHipsClient::tilesAvailable,
+            this, &CelestronOriginSimulator::onRubinTilesAvailable);
+    
+    connect(m_rubinClient, &RubinHipsClient::fetchError,
+            this, &CelestronOriginSimulator::onRubinFetchError);
+    
+    qDebug() << "Rubin Observatory integration initialized";
+    qDebug() << "Rubin images will be saved to:" << rubinDir;
+}
+
+// Add these new slot methods to CelestronOriginSimulator.cpp:
+
+void CelestronOriginSimulator::onRubinImageReady(const QString& filename) {
+    qDebug() << "Rubin Observatory image ready:" << filename;
+    
+    // Extract just the filename for the telescope's image system
+    QFileInfo fileInfo(filename);
+    QString relativePath = QString("Images/Rubin/%1").arg(fileInfo.fileName());
+    
+    // Update telescope state with new image location
+    m_telescopeState->fileLocation = relativePath;
+    m_telescopeState->imageType = "RUBIN_HIPS";
+    m_telescopeState->sequenceNumber++;
+    
+    // Notify all connected clients about the new image
+    m_statusSender->sendNewImageReadyToAll();
+    
+    qDebug() << "Telescope updated with Rubin image:" << relativePath;
+}
+
+void CelestronOriginSimulator::onRubinTilesAvailable(const QStringList& filenames) {
+    qDebug() << "Rubin Observatory tiles available:" << filenames.size();
+    
+    if (!filenames.isEmpty()) {
+        // Use the first available tile
+        onRubinImageReady(filenames.first());
+        
+        // Log all available files
+        for (const QString& file : filenames) {
+            QFileInfo info(file);
+            qDebug() << "  Available:" << info.fileName() << "(" << info.size() << "bytes)";
+        }
+    }
+}
+
+void CelestronOriginSimulator::onRubinFetchError(const QString& error_message) {
+    qDebug() << "Rubin Observatory fetch error:" << error_message;
+    
+    // Could send error notification to clients if desired
+    QJsonObject errorNotification;
+    errorNotification["Command"] = "Warning";
+    errorNotification["Destination"] = "All";
+    errorNotification["Source"] = "RubinImageServer";
+    errorNotification["Type"] = "Notification";
+    errorNotification["Message"] = "Rubin Observatory data unavailable: " + error_message;
+    errorNotification["ExpiredAt"] = m_telescopeState->getExpiredAt();
+    errorNotification["SequenceID"] = m_telescopeState->getNextSequenceId();
+    
+    m_statusSender->sendJsonMessageToAll(errorNotification);
 }
 
 void CelestronOriginSimulator::setupConnections() {
@@ -562,6 +639,12 @@ void CelestronOriginSimulator::updateSlew() {
         
         // Update mount status
         m_statusSender->sendMountStatusToAll();
+        
+        // TRIGGER RUBIN FETCH FOR NEW POSITION
+        if (m_rubinClient) {
+            qDebug() << "Slew complete - fetching Rubin Observatory data for new position";
+            m_rubinClient->fetchTilesForCurrentPointing(m_telescopeState);
+        }
         
         qDebug() << "Slew complete";
     }

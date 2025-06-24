@@ -7,6 +7,7 @@
 *****************************************************************************/
 
 #include "CelestronOriginSimulator.h"
+#include <QtNetwork/QSslError>
 #include <QtCore/qmetatype.h>
 
 #include <QtCore/qtmochelpers.h>
@@ -55,7 +56,13 @@ template <> constexpr inline auto CelestronOriginSimulator::qt_create_metaobject
         "payload",
         "handleWebSocketPong",
         "handleWebSocketTimeout",
-        "checkConnectionHealth"
+        "checkConnectionHealth",
+        "onRubinImageReady",
+        "filename",
+        "onRubinTilesAvailable",
+        "filenames",
+        "onRubinFetchError",
+        "error_message"
     };
 
     QtMocHelpers::UintData qt_methods {
@@ -91,6 +98,18 @@ template <> constexpr inline auto CelestronOriginSimulator::qt_create_metaobject
         QtMocHelpers::SlotData<void()>(16, 2, QMC::AccessPrivate, QMetaType::Void),
         // Slot 'checkConnectionHealth'
         QtMocHelpers::SlotData<void()>(17, 2, QMC::AccessPrivate, QMetaType::Void),
+        // Slot 'onRubinImageReady'
+        QtMocHelpers::SlotData<void(const QString &)>(18, 2, QMC::AccessPrivate, QMetaType::Void, {{
+            { QMetaType::QString, 19 },
+        }}),
+        // Slot 'onRubinTilesAvailable'
+        QtMocHelpers::SlotData<void(const QStringList &)>(20, 2, QMC::AccessPrivate, QMetaType::Void, {{
+            { QMetaType::QStringList, 21 },
+        }}),
+        // Slot 'onRubinFetchError'
+        QtMocHelpers::SlotData<void(const QString &)>(22, 2, QMC::AccessPrivate, QMetaType::Void, {{
+            { QMetaType::QString, 23 },
+        }}),
     };
     QtMocHelpers::UintData qt_properties {
     };
@@ -126,6 +145,9 @@ void CelestronOriginSimulator::qt_static_metacall(QObject *_o, QMetaObject::Call
         case 9: _t->handleWebSocketPong((*reinterpret_cast< std::add_pointer_t<QByteArray>>(_a[1]))); break;
         case 10: _t->handleWebSocketTimeout(); break;
         case 11: _t->checkConnectionHealth(); break;
+        case 12: _t->onRubinImageReady((*reinterpret_cast< std::add_pointer_t<QString>>(_a[1]))); break;
+        case 13: _t->onRubinTilesAvailable((*reinterpret_cast< std::add_pointer_t<QStringList>>(_a[1]))); break;
+        case 14: _t->onRubinFetchError((*reinterpret_cast< std::add_pointer_t<QString>>(_a[1]))); break;
         default: ;
         }
     }
@@ -162,14 +184,14 @@ int CelestronOriginSimulator::qt_metacall(QMetaObject::Call _c, int _id, void **
     if (_id < 0)
         return _id;
     if (_c == QMetaObject::InvokeMetaMethod) {
-        if (_id < 12)
+        if (_id < 15)
             qt_static_metacall(this, _c, _id, _a);
-        _id -= 12;
+        _id -= 15;
     }
     if (_c == QMetaObject::RegisterMethodArgumentMetaType) {
-        if (_id < 12)
+        if (_id < 15)
             qt_static_metacall(this, _c, _id, _a);
-        _id -= 12;
+        _id -= 15;
     }
     return _id;
 }

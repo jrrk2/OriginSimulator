@@ -35,6 +35,7 @@
 		8D267F2E4776F0ECA2F49DC8 /* IOKit.framework in Link Binary With Libraries */ = {isa = PBXBuildFile; fileRef = A1A67BEAA744704B29168D39 /* IOKit.framework */; };
 		A5F48226AD16997661123CAF /* QtGui.framework in Link Binary With Libraries */ = {isa = PBXBuildFile; fileRef = 75BB98347AA20D28579DDB5E /* QtGui.framework */; };
 		A99B2AA0F9CBBDD12BA126A4 /* DiskArbitration.framework in Link Binary With Libraries */ = {isa = PBXBuildFile; fileRef = 2B774D8E4178765CE52EAAF5 /* DiskArbitration.framework */; };
+		AB19AC5D2E0ACB5F00E961DC /* RubinHipsClient.cpp in Compile Sources */ = {isa = PBXBuildFile; fileRef = AB19AC5C2E0ACB5F00E961DC /* RubinHipsClient.cpp */; };
 		B3FE8FAC746D3D5BB24FA398 /* Metal.framework in Link Binary With Libraries */ = {isa = PBXBuildFile; fileRef = 1B2543FCC48E9436F21C4F63 /* Metal.framework */; };
 		B69C44C810DF52361AD5F1C2 /* moc_CelestronOriginSimulator.cpp in Compile Sources */ = {isa = PBXBuildFile; fileRef = EC959F23522179EA1074245B /* moc_CelestronOriginSimulator.cpp */; settings = {ATTRIBUTES = (); }; };
 		D5711FDC6A48F569044E27C9 /* QtNetwork.framework in Link Binary With Libraries */ = {isa = PBXBuildFile; fileRef = CBB5D29B2C34BC7472FAD754 /* QtNetwork.framework */; };
@@ -92,6 +93,8 @@
 		A1A67BEAA744704B29168D39 /* IOKit.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = IOKit.framework; path = /System/Library/Frameworks/IOKit.framework; sourceTree = "<absolute>"; };
 		AA1A9C35F9C81682A060C321 /* CelestronOriginSimulator.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; name = CelestronOriginSimulator.h; path = /Users/jonathan/OriginSimulator/CelestronOriginSimulator.h; sourceTree = "<absolute>"; };
 		AA7E27D039640ED84FB30460 /* CommandHandler.cpp */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.cpp.cpp; name = CommandHandler.cpp; path = /Users/jonathan/OriginSimulator/CommandHandler.cpp; sourceTree = "<absolute>"; };
+		AB19AC5B2E0ACB5F00E961DC /* RubinHipsClient.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; path = RubinHipsClient.h; sourceTree = "<group>"; };
+		AB19AC5C2E0ACB5F00E961DC /* RubinHipsClient.cpp */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.cpp.cpp; path = RubinHipsClient.cpp; sourceTree = "<group>"; };
 		B2D32344E11AE2334C450755 /* moc_CommandHandler.cpp */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.cpp.cpp; name = moc_CommandHandler.cpp; path = /Users/jonathan/OriginSimulator/moc_CommandHandler.cpp; sourceTree = "<absolute>"; };
 		B8EAC66C1EC71ACAA9D54AE0 /* CelestronOriginSimulator.cpp */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.cpp.cpp; name = CelestronOriginSimulator.cpp; path = /Users/jonathan/OriginSimulator/CelestronOriginSimulator.cpp; sourceTree = "<absolute>"; };
 		C1268A779C1AF28380600561 /* CommandHandler.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; name = CommandHandler.h; path = /Users/jonathan/OriginSimulator/CommandHandler.h; sourceTree = "<absolute>"; };
@@ -140,6 +143,8 @@
 		2EB56BE3C2D93CDAB0C52E67 /* Sources */ = {
 			isa = PBXGroup;
 			children = (
+				AB19AC5B2E0ACB5F00E961DC /* RubinHipsClient.h */,
+				AB19AC5C2E0ACB5F00E961DC /* RubinHipsClient.cpp */,
 				8C3DD443A424810F9B333D6D /* main.cpp */,
 				B8EAC66C1EC71ACAA9D54AE0 /* CelestronOriginSimulator.cpp */,
 				248C85CF5988F7C633E8BD57 /* WebsocketConnection.cpp */,
@@ -329,6 +334,7 @@
 				832C5DE24B75C97913893DBB /* moc_CommandHandler.cpp in Compile Sources */,
 				04509D3AC7500B172EEAD0BA /* moc_StatusSender.cpp in Compile Sources */,
 				034ED4AAD568CD9B9C6425CB /* dummy.cpp in Compile Sources */,
+				AB19AC5D2E0ACB5F00E961DC /* RubinHipsClient.cpp in Compile Sources */,
 			);
 			name = "Compile Sources";
 			runOnlyForDeploymentPostprocessing = 0;
