@@ -19,6 +19,7 @@
 #include <QImage>
 #include <QPainter>
 #include <QRadialGradient>
+#include <functional>
 
 // Forward declarations
 class TelescopeState;
@@ -62,7 +63,7 @@ struct HipsTile {
  * Qt-based Rubin Observatory HiPS client integrated with telescope simulator
  */
 class RubinHipsClient : public QObject {
-    Q_OBJECT
+    // Remove Q_OBJECT macro - not needed for this approach
     
 public:
     explicit RubinHipsClient(QObject *parent = nullptr);
@@ -82,17 +83,17 @@ public:
     int getActiveFetches() const { return m_activeFetches; }
     qint64 getTotalBytesDownloaded() const { return m_totalBytesDownloaded; }
     
-signals:
-    void tilesFetched(int successful_tiles, int total_tiles);
-    void tilesAvailable(const QStringList& filenames);
-    void fetchProgress(int completed, int total);
-    void fetchError(const QString& error_message);
-    void imageReady(const QString& filename);
+    // Callback functions - simpler than signals/slots
+    std::function<void(int successful_tiles, int total_tiles)> onTilesFetched;
+    std::function<void(const QStringList& filenames)> onTilesAvailable;
+    std::function<void(int completed, int total)> onFetchProgress;
+    std::function<void(const QString& error_message)> onFetchError;
+    std::function<void(const QString& filename)> onImageReady;
 
-public slots:
+public: // Methods (no longer slots)
     void cancelAllFetches();
 
-private slots:
+private: // Methods (no longer slots)
     void handleNetworkReply();
     void onFetchTimeout();
 
@@ -118,7 +119,8 @@ private:
     };
     QMap<QString, HipsSurvey> m_surveys;
     
-    // HiPS utilities
+public:
+    // HiPS utilities - moved to public section
     class HipsUtils {
     public:
         static long long radecToHealpixNested(double ra_deg, double dec_deg, int tile_order);
@@ -130,15 +132,15 @@ private:
     // Private methods
     void initializeSurveys();
     void initializeImageDirectory();
-    QList<std::unique_ptr<HipsTile>> calculateRequiredTiles(const SkyCoordinates& coords);
-    void fetchSingleTile(std::unique_ptr<HipsTile> tile, const QString& survey_name);
+    QList<std::shared_ptr<HipsTile>> calculateRequiredTiles(const SkyCoordinates& coords);
+    void fetchSingleTile(std::shared_ptr<HipsTile> tile, const QString& survey_name);
     QString buildTileUrl(const HipsTile* tile, const QString& survey_name, const QString& format = "webp") const;
-    void processFetchedTile(std::unique_ptr<HipsTile> tile, const QString& survey_name);
+    void processFetchedTile(std::shared_ptr<HipsTile> tile, const QString& survey_name);
     QString generateRealisticImage(const SkyCoordinates& coords, const QString& survey_name);
     void updateTelescopeImages(const QStringList& filenames);
     
     // Pending network operations
-    QMap<QNetworkReply*, std::unique_ptr<HipsTile>> m_pendingTiles;
+    QMap<QNetworkReply*, std::shared_ptr<HipsTile>> m_pendingTiles;
     QMap<QNetworkReply*, QString> m_pendingSurveys;
 };
 

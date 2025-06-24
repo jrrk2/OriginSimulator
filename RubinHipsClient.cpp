@@ -6,6 +6,7 @@
 #include <QFileInfo>
 #include <QBuffer>
 #include <QImageWriter>
+#include <algorithm>
 #include <cmath>
 
 // Constants
@@ -165,12 +166,14 @@ QStringList RubinHipsClient::getAvailableSurveys() const {
 
 void RubinHipsClient::fetchTilesForCurrentPointing(TelescopeState* telescopeState) {
     if (!telescopeState) {
-        emit fetchError("Invalid telescope state");
+        if (onFetchError) {
+            onFetchError("Invalid telescope state");
+        }
         return;
     }
     
     // Convert telescope coordinates to sky coordinates
-    double ra_deg = telescopeState->ra * 180.0 / PI; // Convert from radians
+    double ra_deg = telescopeState->ra * 180.0 / PI * 12.0 / 24.0; // Convert from radians -> hours -> degrees
     double dec_deg = telescopeState->dec * 180.0 / PI; // Convert from radians
     double fov_deg = std::max(telescopeState->fovX, telescopeState->fovY) * 180.0 / PI;
     
@@ -196,12 +199,16 @@ void RubinHipsClient::fetchTilesAsync(const SkyCoordinates& coords, const QStrin
     }
     
     if (!coords.is_valid) {
-        emit fetchError("Invalid coordinates: " + coords.validation_message);
+        if (onFetchError) {
+            onFetchError("Invalid coordinates: " + coords.validation_message);
+        }
         return;
     }
     
     if (!m_surveys.contains(survey_name) || !m_surveys[survey_name].available) {
-        emit fetchError("Survey not available: " + survey_name);
+        if (onFetchError) {
+            onFetchError("Survey not available: " + survey_name);
+        }
         return;
     }
     
@@ -212,8 +219,12 @@ void RubinHipsClient::fetchTilesAsync(const SkyCoordinates& coords, const QStrin
         // Generate a realistic synthetic image instead
         QString filename = generateRealisticImage(coords, survey_name);
         if (!filename.isEmpty()) {
-            emit imageReady(filename);
-            emit tilesAvailable(QStringList() << filename);
+            if (onImageReady) {
+                onImageReady(filename);
+            }
+            if (onTilesAvailable) {
+                onTilesAvailable(QStringList() << filename);
+            }
         }
         return;
     }
@@ -230,12 +241,12 @@ void RubinHipsClient::fetchTilesAsync(const SkyCoordinates& coords, const QStrin
     
     // Fetch tiles
     for (auto& tile : tiles) {
-        fetchSingleTile(std::move(tile), survey_name);
+        fetchSingleTile(tile, survey_name);
     }
 }
 
-QList<std::unique_ptr<HipsTile>> RubinHipsClient::calculateRequiredTiles(const SkyCoordinates& coords) {
-    QList<std::unique_ptr<HipsTile>> tiles;
+QList<std::shared_ptr<HipsTile>> RubinHipsClient::calculateRequiredTiles(const SkyCoordinates& coords) {
+    QList<std::shared_ptr<HipsTile>> tiles;
     
     // Get known working pixels for the order
     QList<long long> candidate_pixels = HipsUtils::getKnownWorkingPixels(coords.hips_order);
@@ -247,15 +258,15 @@ QList<std::unique_ptr<HipsTile>> RubinHipsClient::calculateRequiredTiles(const S
     }
     
     // Create tiles for the first few candidate pixels
-    int max_tiles = std::min(4, candidate_pixels.size());
+    int max_tiles = std::min(4, static_cast<int>(candidate_pixels.size()));
     for (int i = 0; i < max_tiles; ++i) {
-        tiles.append(std::make_unique<HipsTile>(coords.hips_order, candidate_pixels[i]));
+        tiles.append(std::make_shared<HipsTile>(coords.hips_order, candidate_pixels[i]));
     }
     
     return tiles;
 }
 
-void RubinHipsClient::fetchSingleTile(std::unique_ptr<HipsTile> tile, const QString& survey_name) {
+void RubinHipsClient::fetchSingleTile(std::shared_ptr<HipsTile> tile, const QString& survey_name) {
     QString url = buildTileUrl(tile.get(), survey_name);
     
     QNetworkRequest request(url);
@@ -265,7 +276,7 @@ void RubinHipsClient::fetchSingleTile(std::unique_ptr<HipsTile> tile, const QStr
     QNetworkReply* reply = m_networkManager->get(request);
     
     // Store tile and survey info
-    m_pendingTiles[reply] = std::move(tile);
+    m_pendingTiles[reply] = tile;
     m_pendingSurveys[reply] = survey_name;
     
     // Connect reply signals
@@ -309,7 +320,7 @@ void RubinHipsClient::handleNetworkReply() {
         return;
     }
     
-    std::unique_ptr<HipsTile> tile = std::move(tileIt.value());
+    std::shared_ptr<HipsTile> tile = tileIt.value();
     QString survey_name = surveyIt.value();
     
     m_pendingTiles.erase(tileIt);
@@ -328,7 +339,7 @@ void RubinHipsClient::handleNetworkReply() {
             qDebug() << "Successfully fetched tile:" << tile->healpix_pixel 
                      << "(" << data.size() << "bytes)";
             
-            processFetchedTile(std::move(tile), survey_name);
+            processFetchedTile(tile, survey_name);
         } else {
             qDebug() << "Empty response for tile:" << tile->healpix_pixel;
             tile->error_message = "Empty response";
@@ -339,8 +350,10 @@ void RubinHipsClient::handleNetworkReply() {
         tile->error_message = reply->errorString();
     }
     
-    // Emit progress
-    emit fetchProgress(m_completedFetches, m_totalFetches);
+    // Call progress callback if set
+    if (onFetchProgress) {
+        onFetchProgress(m_completedFetches, m_totalFetches);
+    }
     
     // Check if all fetches complete
     if (m_activeFetches == 0) {
@@ -351,17 +364,22 @@ void RubinHipsClient::handleNetworkReply() {
             // Create coordinates from the first tile attempt
             SkyCoordinates fallback_coords(187.0, 12.0, 1.0); // Virgo region
             QString filename = generateRealisticImage(fallback_coords, survey_name);
-            if (!filename.isEmpty()) {
-                emit imageReady(filename);
-                emit tilesAvailable(QStringList() << filename);
+            if (!filename.isEmpty() && onImageReady) {
+                onImageReady(filename);
+            }
+            if (!filename.isEmpty() && onTilesAvailable) {
+                onTilesAvailable(QStringList() << filename);
             }
         }
         
-        emit tilesFetched(m_completedFetches, m_totalFetches);
+        // Call completion callback if set
+        if (onTilesFetched) {
+            onTilesFetched(m_completedFetches, m_totalFetches);
+        }
     }
 }
 
-void RubinHipsClient::processFetchedTile(std::unique_ptr<HipsTile> tile, const QString& survey_name) {
+void RubinHipsClient::processFetchedTile(std::shared_ptr<HipsTile> tile, const QString& survey_name) {
     if (!tile->is_loaded) return;
     
     // Save tile to file
@@ -370,7 +388,9 @@ void RubinHipsClient::processFetchedTile(std::unique_ptr<HipsTile> tile, const Q
     
     if (tile->saveToFile(filepath)) {
         qDebug() << "Saved Rubin tile:" << filename;
-        emit imageReady(filepath);
+        if (onImageReady) {
+            onImageReady(filepath);
+        }
         
         // Update telescope with new image
         updateTelescopeImages(QStringList() << filepath);
@@ -476,8 +496,8 @@ QString RubinHipsClient::generateRealisticImage(const SkyCoordinates& coords, co
 }
 
 void RubinHipsClient::updateTelescopeImages(const QStringList& filenames) {
-    if (!filenames.isEmpty()) {
-        emit tilesAvailable(filenames);
+    if (!filenames.isEmpty() && onTilesAvailable) {
+        onTilesAvailable(filenames);
     }
 }
 
@@ -500,7 +520,7 @@ void RubinHipsClient::cancelAllFetches() {
 
 void RubinHipsClient::onFetchTimeout() {
     // Check for and handle any timed-out requests
-    QMutableMapIterator<QNetworkReply*, std::unique_ptr<HipsTile>> it(m_pendingTiles);
+    QMutableMapIterator<QNetworkReply*, std::shared_ptr<HipsTile>> it(m_pendingTiles);
     while (it.hasNext()) {
         it.next();
         QNetworkReply* reply = it.key();
@@ -603,3 +623,5 @@ QList<long long> RubinHipsClient::HipsUtils::calculateNeighborPixels(long long c
     
     return pixels;
 }
+
+// No MOC file needed since we removed Q_OBJECT

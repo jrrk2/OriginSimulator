@@ -127,6 +127,7 @@ void CommandHandler::handleRunInitialize(const QJsonObject &obj, WebSocketConnec
     m_telescopeState->initInfo.positionOfFocus = -1;
     m_telescopeState->initInfo.numPointsRemaining = 2;
     m_telescopeState->initInfo.percentComplete = 0;
+    m_telescopeState->isAligned = true;
     
     // Send immediate response
     QJsonObject response;
@@ -200,8 +201,21 @@ void CommandHandler::handleGotoRaDec(const QJsonObject &obj, WebSocketConnection
     if (m_telescopeState->isAligned) {
         m_telescopeState->isGotoOver = false;
         m_telescopeState->isSlewing = true;
-        m_telescopeState->targetRa = obj["Ra"].toDouble();
-        m_telescopeState->targetDec = obj["Dec"].toDouble();
+
+        // ADD THESE DEBUG LINES:
+        double received_ra = obj["Ra"].toDouble();
+        double received_dec = obj["Dec"].toDouble();
+        qDebug() << "*** GOTO COMMAND RECEIVED ***";
+        qDebug() << "Raw RA from JSON:" << received_ra << "radians";
+        qDebug() << "Raw Dec from JSON:" << received_dec << "radians";
+        qDebug() << "RA in hours:" << (received_ra * 12.0 / M_PI);
+        qDebug() << "Dec in degrees:" << (received_dec * 180.0 / M_PI);
+        
+        m_telescopeState->targetRa = received_ra;
+        m_telescopeState->targetDec = received_dec;
+        
+        qDebug() << "Stored targetRa:" << m_telescopeState->targetRa;
+        qDebug() << "Stored targetDec:" << m_telescopeState->targetDec;	
         
         emit slewStarted();
         

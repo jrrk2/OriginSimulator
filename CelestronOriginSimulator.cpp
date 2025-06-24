@@ -60,17 +60,28 @@ void CelestronOriginSimulator::setupRubinIntegration() {
     QString appSupportDir = QDir(homeDir).absoluteFilePath("Library/Application Support/OriginSimulator");
     QString rubinDir = QDir(appSupportDir).absoluteFilePath("Images/Rubin");
     m_rubinClient->setImageDirectory(rubinDir);
+ 
+    // Connect Rubin client callbacks to telescope behavior (using lambdas instead of signals/slots)
+    m_rubinClient->onImageReady = [this](const QString& filename) {
+        onRubinImageReady(filename);
+    };
     
-    // Connect Rubin client signals to telescope behavior
-    connect(m_rubinClient, &RubinHipsClient::imageReady, 
-            this, &CelestronOriginSimulator::onRubinImageReady);
+    m_rubinClient->onTilesAvailable = [this](const QStringList& filenames) {
+        onRubinTilesAvailable(filenames);
+    };
     
-    connect(m_rubinClient, &RubinHipsClient::tilesAvailable,
-            this, &CelestronOriginSimulator::onRubinTilesAvailable);
+    m_rubinClient->onFetchError = [this](const QString& error_message) {
+        onRubinFetchError(error_message);
+    };
     
-    connect(m_rubinClient, &RubinHipsClient::fetchError,
-            this, &CelestronOriginSimulator::onRubinFetchError);
+    m_rubinClient->onTilesFetched = [this](int successful, int total) {
+        qDebug() << "Rubin fetch complete:" << successful << "/" << total << "tiles";
+    };
     
+    m_rubinClient->onFetchProgress = [this](int completed, int total) {
+        qDebug() << "Rubin fetch progress:" << completed << "/" << total;
+    };
+        
     qDebug() << "Rubin Observatory integration initialized";
     qDebug() << "Rubin images will be saved to:" << rubinDir;
 }
@@ -627,6 +638,11 @@ void CelestronOriginSimulator::updateSlew() {
     slewProgress += 20;  // 20% progress per 500ms
     
     if (slewProgress >= 100) {
+        // ADD THESE DEBUG LINES BEFORE COORDINATE UPDATE:
+        qDebug() << "*** SLEW COMPLETING ***";
+        qDebug() << "Before update - RA:" << m_telescopeState->ra << "Dec:" << m_telescopeState->dec;
+        qDebug() << "Target RA:" << m_telescopeState->targetRa << "Target Dec:" << m_telescopeState->targetDec;
+        
         // Slew complete
         m_telescopeState->isGotoOver = true;
         m_telescopeState->isSlewing = false;
@@ -636,10 +652,20 @@ void CelestronOriginSimulator::updateSlew() {
         // Stop the timer
         m_slewTimer->stop();
         slewProgress = 0;
-        
+
+	qDebug() << "After update - RA:" << m_telescopeState->ra << "Dec:" << m_telescopeState->dec;
+		
         // Update mount status
         m_statusSender->sendMountStatusToAll();
-        
+
+	// Add delay to ensure coordinates are fully updated
+	QTimer::singleShot(100, this, [this]() {
+	    if (m_rubinClient) {
+		qDebug() << "Slew complete - fetching Rubin Observatory data for new position";
+		m_rubinClient->fetchTilesForCurrentPointing(m_telescopeState);
+	    }
+	});
+
         // TRIGGER RUBIN FETCH FOR NEW POSITION
         if (m_rubinClient) {
             qDebug() << "Slew complete - fetching Rubin Observatory data for new position";
