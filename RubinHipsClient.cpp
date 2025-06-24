@@ -52,6 +52,9 @@ void SkyCoordinates::validateAndNormalize() {
 void SkyCoordinates::validateRubinCoverage() {
     // Virgo Cluster region (where we know data exists)
     bool in_virgo_region = (ra_deg >= 180.0 && ra_deg <= 195.0 && dec_deg >= 5.0 && dec_deg <= 20.0);
+    qDebug() << "Virgo coverage check - RA:" << ra_deg << "in [180,195]?" << (ra_deg >= 180.0 && ra_deg <= 195.0);
+    qDebug() << "Virgo coverage check - Dec:" << dec_deg << "in [5,20]?" << (dec_deg >= 5.0 && dec_deg <= 20.0);
+    qDebug() << "Final Virgo coverage result:" << in_virgo_region;
     
     if (!in_virgo_region) {
         validation_message += QString("WARNING: Coordinates (RA=%1°, Dec=%2°) are outside known Rubin Observatory coverage areas. ")
@@ -72,7 +75,9 @@ QString SkyCoordinates::toString() const {
 }
 
 bool SkyCoordinates::isInKnownCoverage() const {
-    return (ra_deg >= 180.0 && ra_deg <= 195.0 && dec_deg >= 5.0 && dec_deg <= 20.0);
+    bool result = (ra_deg >= 180.0 && ra_deg <= 195.0 && dec_deg >= 5.0 && dec_deg <= 20.0);
+    qDebug() << "isInKnownCoverage() called with RA:" << ra_deg << "Dec:" << dec_deg << "Result:" << result;
+    return result;
 }
 
 // HipsTile implementation
@@ -173,9 +178,26 @@ void RubinHipsClient::fetchTilesForCurrentPointing(TelescopeState* telescopeStat
     }
     
     // Convert telescope coordinates to sky coordinates
-    double ra_deg = telescopeState->ra * 180.0 / PI * 12.0 / 24.0; // Convert from radians -> hours -> degrees
-    double dec_deg = telescopeState->dec * 180.0 / PI; // Convert from radians
+    // DETAILED COORDINATE CONVERSION DEBUG
+    qDebug() << "=== COORDINATE CONVERSION DEBUG ===";
+    qDebug() << "Raw telescope state RA:" << telescopeState->ra << "radians";
+    qDebug() << "Raw telescope state Dec:" << telescopeState->dec << "radians";
+    qDebug() << "PI constant:" << PI;
+    
+    double ra_deg = telescopeState->ra * 180.0 / PI;
+    qDebug() << "RA conversion: " << telescopeState->ra << " * 180 / " << PI << " = " << ra_deg;
+    qDebug() << "Manual calculation: " << telescopeState->ra << " * " << (180.0/PI) << " = " << (telescopeState->ra * (180.0/PI));
+    
+    // Verify our expected result
+    double expected_ra = 3.40339 * 180.0 / PI;
+    qDebug() << "Expected RA for 3.40339 rad:" << expected_ra << "degrees"; // Convert from radians -> hours -> degrees
+    double dec_deg = telescopeState->dec * 180.0 / PI;
+    qDebug() << "Dec conversion: " << telescopeState->dec << " * 180 / " << PI << " = " << dec_deg;
+    
+    double expected_dec = 0.226893 * 180.0 / PI;
+    qDebug() << "Expected Dec for 0.226893 rad:" << expected_dec << "degrees"; // Convert from radians
     double fov_deg = std::max(telescopeState->fovX, telescopeState->fovY) * 180.0 / PI;
+    qDebug() << "FOV conversion: max(" << telescopeState->fovX << ", " << telescopeState->fovY << ") * 180 / PI = " << fov_deg;
     
     // Ensure reasonable FOV
     if (fov_deg < 0.1) fov_deg = 1.0; // Default 1-degree field
@@ -187,6 +209,8 @@ void RubinHipsClient::fetchTilesForCurrentPointing(TelescopeState* telescopeStat
     
     // Choose survey based on coordinates
     QString survey = coords.isInKnownCoverage() ? "virgo_cluster" : "virgo_asteroids";
+    qDebug() << "Selected survey:" << survey << "for coordinates" << coords.toString();
+    qDebug() << "In known coverage area:" << coords.isInKnownCoverage();
     
     fetchTilesAsync(coords, survey);
 }
@@ -220,10 +244,8 @@ void RubinHipsClient::fetchTilesAsync(const SkyCoordinates& coords, const QStrin
         QString filename = generateRealisticImage(coords, survey_name);
         if (!filename.isEmpty()) {
             if (onImageReady) {
-                onImageReady(filename);
             }
             if (onTilesAvailable) {
-                onTilesAvailable(QStringList() << filename);
             }
         }
         return;
@@ -268,6 +290,7 @@ QList<std::shared_ptr<HipsTile>> RubinHipsClient::calculateRequiredTiles(const S
 
 void RubinHipsClient::fetchSingleTile(std::shared_ptr<HipsTile> tile, const QString& survey_name) {
     QString url = buildTileUrl(tile.get(), survey_name);
+    qDebug() << "Built tile URL:" << url;
     
     QNetworkRequest request(url);
     request.setHeader(QNetworkRequest::UserAgentHeader, "OriginSimulator-RubinClient/1.0");
@@ -345,9 +368,17 @@ void RubinHipsClient::handleNetworkReply() {
             tile->error_message = "Empty response";
         }
     } else {
-                 qDebug() << "Network error for tile:" << tile->healpix_pixel 
+        qDebug() << "Network error for tile:" << tile->healpix_pixel << "HTTP:" << reply->attribute(QNetworkRequest::HttpStatusCodeAttribute).toInt() 
                  << reply->errorString();
-        tile->error_message = reply->errorString();
+                tile->error_message = reply->errorString();
+        
+        // Check if this is a 404 (tile doesn't exist) vs other network error
+        int httpStatus = reply->attribute(QNetworkRequest::HttpStatusCodeAttribute).toInt();
+        if (httpStatus == 404) {
+            qDebug() << "Tile" << tile->healpix_pixel << "does not exist (404) - this is normal for some sky regions";
+        } else if (httpStatus == 0) {
+            qDebug() << "Network connection error for tile" << tile->healpix_pixel << "- may retry with different survey";
+        }
     }
     
     // Call progress callback if set
@@ -360,15 +391,23 @@ void RubinHipsClient::handleNetworkReply() {
         m_timeoutTimer->stop();
         
         // Generate synthetic image if no real tiles were successful
-        if (m_completedFetches == m_totalFetches && m_totalBytesDownloaded == 0) {
-            // Create coordinates from the first tile attempt
-            SkyCoordinates fallback_coords(187.0, 12.0, 1.0); // Virgo region
-            QString filename = generateRealisticImage(fallback_coords, survey_name);
-            if (!filename.isEmpty() && onImageReady) {
-                onImageReady(filename);
-            }
-            if (!filename.isEmpty() && onTilesAvailable) {
-                onTilesAvailable(QStringList() << filename);
+        if (m_activeFetches == 0) {
+            qDebug() << "All tile fetches complete. Downloaded bytes:" << m_totalBytesDownloaded << "Successful tiles:" << (m_totalBytesDownloaded > 0 ? "Yes" : "No");
+            
+            // If we got some real data, we're done. If not, generate synthetic image
+            if (m_totalBytesDownloaded == 0) {
+                qDebug() << "No real tiles downloaded - generating synthetic astronomy image";
+                // Create coordinates from the first failed attempt
+                SkyCoordinates fallback_coords(187.0, 12.0, 1.0); // Virgo region
+                QString filename = generateRealisticImage(fallback_coords, survey_name);
+                if (!filename.isEmpty()) {
+                    if (onImageReady) {
+                    }
+                    if (onTilesAvailable) {
+                    }
+                } else {
+                    qDebug() << "Failed to generate fallback image";
+                }
             }
         }
         
@@ -401,6 +440,7 @@ void RubinHipsClient::processFetchedTile(std::shared_ptr<HipsTile> tile, const Q
 
 QString RubinHipsClient::generateRealisticImage(const SkyCoordinates& coords, const QString& survey_name) {
     // Generate a realistic astronomical image when real data isn't available
+    qDebug() << "Generating synthetic image for coordinates:" << coords.toString();
     QImage image(1024, 768, QImage::Format_RGB888);
     image.fill(QColor(2, 2, 5)); // Very dark space background
     
