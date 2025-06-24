@@ -59,6 +59,15 @@ private:
     QTimer *m_slewTimer;
     QTimer *m_imagingTimer;
     QTimer *m_connectionHealthTimer;
+    // Add initialization timer
+    QTimer *m_initTimer;
+    int m_initUpdateCount = 0;  // Add this to track initialization progress
+  
+    // Add initialization methods
+    void setupInitialization();
+    void updateInitialization();
+    void completeInitialization();
+    void failInitialization();
 
     // Absolute paths for image serving (NEW)
     QString m_absoluteTempDir;

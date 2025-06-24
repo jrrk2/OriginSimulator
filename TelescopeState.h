@@ -119,7 +119,20 @@ public:
     double baseRA = 1.4336279496820648;
     double baseDec = 1.4336279496820648;
     double startTime = 0.0;
-    
+
+    // Initialization state
+    struct InitializationInfo {
+	    int numPoints = 0;
+	    int positionOfFocus = -1;
+	    int numPointsRemaining = 2;  // Default to 2 based on trace
+	    int percentComplete = 0;
+	};
+
+	InitializationInfo initInfo;
+	bool isFakeInitialized = false;
+	bool isInitializing = false;
+	int initializationProgress = 0;  // 0-100%
+  
     TelescopeState() {
         startTime = QDateTime::currentDateTime().toMSecsSinceEpoch() / 1000.0;
         // Initialize with some random variation like real telescope

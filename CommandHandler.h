@@ -17,7 +17,8 @@ public:
 signals:
     void slewStarted();
     void imagingStarted();
-
+    void initializationStarted(bool fakeInit); // Add this signal
+  
 private:
     TelescopeState *m_telescopeState;
     

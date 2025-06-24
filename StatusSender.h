@@ -41,6 +41,8 @@ public:
     void sendDewHeaterStatusToAll() { sendDewHeaterStatus(); }
     void sendOrientationStatusToAll() { sendOrientationStatus(); }
     void sendTaskControllerStatusToAll() { sendTaskControllerStatus(); }
+    // was private
+    void sendJsonMessageToAll(const QJsonObject &obj);
 
 private:
     TelescopeState *m_telescopeState;
@@ -48,7 +50,6 @@ private:
     
     // Helper methods
     void sendJsonMessage(WebSocketConnection *wsConn, const QJsonObject &obj);
-    void sendJsonMessageToAll(const QJsonObject &obj);
 };
 
 #endif // STATUSSENDER_H

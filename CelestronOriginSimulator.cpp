@@ -60,6 +60,18 @@ void CelestronOriginSimulator::setupConnections() {
     connect(m_commandHandler, &CommandHandler::imagingStarted, this, [this]() {
         m_imagingTimer->start(1000);
     });
+
+    // Connect initialization signal
+    connect(m_commandHandler, &CommandHandler::initializationStarted, this, [this](bool fakeInit) {
+        if (fakeInit) {
+            // Complete immediately for fake initialization
+            QTimer::singleShot(1000, this, &CelestronOriginSimulator::completeInitialization);
+        } else {
+            // Start the initialization process
+            m_initTimer->start(3000); // Update every 3 seconds like real telescope
+        }
+    });
+    
 }
 
 void CelestronOriginSimulator::setupTimers() {
@@ -80,6 +92,95 @@ void CelestronOriginSimulator::setupTimers() {
     // Create imaging timer
     m_imagingTimer = new QTimer(this);
     connect(m_imagingTimer, &QTimer::timeout, this, &CelestronOriginSimulator::updateImaging);
+
+    // Create initialization timer
+    m_initTimer = new QTimer(this);
+    m_initTimer->setSingleShot(false);
+    connect(m_initTimer, &QTimer::timeout, this, &CelestronOriginSimulator::updateInitialization);
+
+}
+
+void CelestronOriginSimulator::updateInitialization() {
+    // Simulate real telescope initialization progression
+    m_initUpdateCount++;
+    
+    // Send status update with progress
+    m_statusSender->sendTaskControllerStatusToAll();
+    
+    // After several updates, set focus position (matches real telescope behavior)
+    if (m_initUpdateCount == 5) {
+        m_telescopeState->initInfo.positionOfFocus = 18617; // Use value from real trace
+        qDebug() << "Initialization found focus position:" << m_telescopeState->initInfo.positionOfFocus;
+    }
+    
+    // After more updates, find first alignment point
+    if (m_initUpdateCount == 10) {
+        m_telescopeState->initInfo.numPoints = 1;
+        m_telescopeState->initInfo.numPointsRemaining = 1;
+        m_telescopeState->initInfo.percentComplete = 50;
+        qDebug() << "Initialization found first alignment point";
+    }
+    
+    // Randomly decide if initialization fails (about 50% chance like real telescope)
+    if (m_initUpdateCount < 10 && QRandomGenerator::global()->bounded(100) < 10) {
+        failInitialization();
+        return;
+    }
+    
+    // Complete the initialization
+    if (m_initUpdateCount >= 15) {
+        m_telescopeState->initInfo.numPoints = 2;
+        m_telescopeState->initInfo.numPointsRemaining = 0;
+        m_telescopeState->initInfo.percentComplete = 100;
+        completeInitialization();
+    }
+}
+
+void CelestronOriginSimulator::completeInitialization() {
+    // Stop the timer
+    m_initTimer->stop();
+    m_initUpdateCount = 0;
+    
+    // Set final status
+    m_telescopeState->isInitializing = false;
+    m_telescopeState->stage = "COMPLETE";
+    m_telescopeState->isReady = true;
+    
+    // Send completion status
+    m_statusSender->sendTaskControllerStatusToAll();
+    
+    // Wait a moment and transition to IDLE state
+    QTimer::singleShot(1000, this, [this]() {
+        m_telescopeState->state = "IDLE";
+        m_statusSender->sendTaskControllerStatusToAll();
+        qDebug() << "Initialization complete - telescope ready";
+    });
+}
+
+void CelestronOriginSimulator::failInitialization() {
+    // Stop the timer
+    m_initTimer->stop();
+    m_initUpdateCount = 0;
+    
+    // Set failure status
+    m_telescopeState->isInitializing = false;
+    m_telescopeState->stage = "STOPPED";
+    m_telescopeState->isReady = false;
+    
+    // Send error notification
+    QJsonObject errorNotification;
+    errorNotification["Command"] = "Error";
+    errorNotification["Destination"] = "All";
+    errorNotification["ErrorCode"] = -78;
+    errorNotification["ErrorMessage"] = "Initialization failed. Please point the scope away from any bright lights; buildings; trees and try again.";
+    errorNotification["ExpiredAt"] = m_telescopeState->getExpiredAt();
+    errorNotification["Type"] = "Notification";
+    m_statusSender->sendJsonMessageToAll(errorNotification);
+    
+    // Send failure status
+    m_statusSender->sendTaskControllerStatusToAll();
+    
+    qDebug() << "Initialization failed with error -78";
 }
 
 void CelestronOriginSimulator::handleNewConnection() {

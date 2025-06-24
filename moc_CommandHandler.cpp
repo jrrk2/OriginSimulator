@@ -41,7 +41,9 @@ template <> constexpr inline auto CommandHandler::qt_create_metaobjectdata<qt_me
         "CommandHandler",
         "slewStarted",
         "",
-        "imagingStarted"
+        "imagingStarted",
+        "initializationStarted",
+        "fakeInit"
     };
 
     QtMocHelpers::UintData qt_methods {
@@ -49,6 +51,10 @@ template <> constexpr inline auto CommandHandler::qt_create_metaobjectdata<qt_me
         QtMocHelpers::SignalData<void()>(1, 2, QMC::AccessPublic, QMetaType::Void),
         // Signal 'imagingStarted'
         QtMocHelpers::SignalData<void()>(3, 2, QMC::AccessPublic, QMetaType::Void),
+        // Signal 'initializationStarted'
+        QtMocHelpers::SignalData<void(bool)>(4, 2, QMC::AccessPublic, QMetaType::Void, {{
+            { QMetaType::Bool, 5 },
+        }}),
     };
     QtMocHelpers::UintData qt_properties {
     };
@@ -74,6 +80,7 @@ void CommandHandler::qt_static_metacall(QObject *_o, QMetaObject::Call _c, int _
         switch (_id) {
         case 0: _t->slewStarted(); break;
         case 1: _t->imagingStarted(); break;
+        case 2: _t->initializationStarted((*reinterpret_cast< std::add_pointer_t<bool>>(_a[1]))); break;
         default: ;
         }
     }
@@ -81,6 +88,8 @@ void CommandHandler::qt_static_metacall(QObject *_o, QMetaObject::Call _c, int _
         if (QtMocHelpers::indexOfMethod<void (CommandHandler::*)()>(_a, &CommandHandler::slewStarted, 0))
             return;
         if (QtMocHelpers::indexOfMethod<void (CommandHandler::*)()>(_a, &CommandHandler::imagingStarted, 1))
+            return;
+        if (QtMocHelpers::indexOfMethod<void (CommandHandler::*)(bool )>(_a, &CommandHandler::initializationStarted, 2))
             return;
     }
 }
@@ -104,14 +113,14 @@ int CommandHandler::qt_metacall(QMetaObject::Call _c, int _id, void **_a)
     if (_id < 0)
         return _id;
     if (_c == QMetaObject::InvokeMetaMethod) {
-        if (_id < 2)
+        if (_id < 3)
             qt_static_metacall(this, _c, _id, _a);
-        _id -= 2;
+        _id -= 3;
     }
     if (_c == QMetaObject::RegisterMethodArgumentMetaType) {
-        if (_id < 2)
+        if (_id < 3)
             *reinterpret_cast<QMetaType *>(_a[0]) = QMetaType();
-        _id -= 2;
+        _id -= 3;
     }
     return _id;
 }
@@ -126,5 +135,11 @@ void CommandHandler::slewStarted()
 void CommandHandler::imagingStarted()
 {
     QMetaObject::activate(this, &staticMetaObject, 1, nullptr);
+}
+
+// SIGNAL 2
+void CommandHandler::initializationStarted(bool _t1)
+{
+    QMetaObject::activate<void>(this, &staticMetaObject, 2, nullptr, _t1);
 }
 QT_WARNING_POP

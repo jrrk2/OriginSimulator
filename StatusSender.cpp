@@ -336,6 +336,22 @@ void StatusSender::sendTaskControllerStatus(WebSocketConnection *specificClient,
     taskStatus["State"] = m_telescopeState->state;
     taskStatus["ExpiredAt"] = m_telescopeState->getExpiredAt();
     
+    // Add initialization info if in INITIALIZING state
+    if (m_telescopeState->state == "INITIALIZING") {
+        QJsonObject initInfo;
+        initInfo["NumPoints"] = m_telescopeState->initInfo.numPoints;
+        initInfo["PositionOfFocus"] = m_telescopeState->initInfo.positionOfFocus;
+        initInfo["NumPointsRemaining"] = m_telescopeState->initInfo.numPointsRemaining;
+        initInfo["PercentComplete"] = m_telescopeState->initInfo.percentComplete;
+        
+        taskStatus["InitializationInfo"] = initInfo;
+        
+        // Only add this flag if we're in a completion or post-init state
+        if (m_telescopeState->stage == "COMPLETE" || m_telescopeState->state == "IDLE") {
+            taskStatus["IsFakeInitialized"] = m_telescopeState->isFakeInitialized;
+        }
+    }
+    
     if (sequenceId != -1) {
         taskStatus["Command"] = "GetStatus";
         taskStatus["SequenceID"] = sequenceId;

@@ -96,11 +96,11 @@ void CommandHandler::processCommand(const QJsonObject &obj, WebSocketConnection 
     }
 }
 
+// In CommandHandler.cpp
+
 void CommandHandler::handleRunInitialize(const QJsonObject &obj, WebSocketConnection *wsConn, int sequenceId, const QString &source, const QString &destination) {
+    // Update telescope state
     m_telescopeState->dateTime = QDateTime::currentDateTime();
-    m_telescopeState->isAligned = false;
-    m_telescopeState->isGotoOver = true;
-    m_telescopeState->isTracking = false;
     
     if (obj.contains("Date")) m_telescopeState->dateTime.setDate(QDate::fromString(obj["Date"].toString(), "dd MM yyyy"));
     if (obj.contains("Time")) m_telescopeState->dateTime.setTime(QTime::fromString(obj["Time"].toString(), "hh:mm:ss"));
@@ -108,6 +108,27 @@ void CommandHandler::handleRunInitialize(const QJsonObject &obj, WebSocketConnec
     if (obj.contains("Longitude")) m_telescopeState->longitude = obj["Longitude"].toDouble();
     if (obj.contains("TimeZone")) m_telescopeState->timeZone = obj["TimeZone"].toString();
     
+    // Set fake initialization flag if specified
+    if (obj.contains("FakeInitialize")) {
+        m_telescopeState->isFakeInitialized = obj["FakeInitialize"].toBool();
+    } else {
+        m_telescopeState->isFakeInitialized = false;
+    }
+    
+    // Start the initialization process
+    m_telescopeState->isInitializing = true;
+    m_telescopeState->initializationProgress = 0;
+    m_telescopeState->state = "INITIALIZING";
+    m_telescopeState->stage = "IN_PROGRESS";
+    m_telescopeState->isReady = false;
+    
+    // Reset initialization info
+    m_telescopeState->initInfo.numPoints = 0;
+    m_telescopeState->initInfo.positionOfFocus = -1;
+    m_telescopeState->initInfo.numPointsRemaining = 2;
+    m_telescopeState->initInfo.percentComplete = 0;
+    
+    // Send immediate response
     QJsonObject response;
     response["Command"] = "RunInitialize";
     response["Destination"] = source;
@@ -119,6 +140,9 @@ void CommandHandler::handleRunInitialize(const QJsonObject &obj, WebSocketConnec
     response["Type"] = "Response";
     
     sendJsonResponse(wsConn, response);
+    
+    // Emit signal to start the initialization simulation
+    emit initializationStarted(obj.contains("FakeInitialize") && obj["FakeInitialize"].toBool());
 }
 
 void CommandHandler::handleStartAlignment(const QJsonObject &obj, WebSocketConnection *wsConn, int sequenceId, const QString &source, const QString &destination) {
