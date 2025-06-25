@@ -630,7 +630,7 @@ void CelestronOriginSimulator::onWebSocketDisconnected() {
 
 void CelestronOriginSimulator::sendBroadcast() {
     // Prepare the broadcast message
-    QString message = QString("Origin IP Address: %1 Identity: Origin140020 Version: 1.1.4248");
+  QString message = QString("Identity:Origin-") + QLatin1String (std::to_string(qrand() % 100)) + QString("Z Origin IP Address = %1");
     
     // Get our IP addresses
     QList<QHostAddress> ipAddresses = QNetworkInterface::allAddresses();
