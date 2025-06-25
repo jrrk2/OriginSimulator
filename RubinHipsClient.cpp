@@ -23,6 +23,25 @@ constexpr int FETCH_TIMEOUT_MS = 15000;
 
 double Ang2Rad(double x) { return x * DEG_TO_RAD; }
 
+// Add these helper functions to validate coordinates
+bool isValidTheta(double theta) {
+    return theta >= 0.0 && theta <= M_PI;
+}
+
+bool isValidPhi(double phi) {
+    return phi >= 0.0 && phi < 2.0 * M_PI;
+}
+
+void validateAndClampCoordinates(double& theta, double& phi) {
+    // Clamp theta to [0, π]
+    if (theta < 0.0) theta = 0.0;
+    if (theta > M_PI) theta = M_PI;
+    
+    // Normalize phi to [0, 2π)
+    while (phi < 0.0) phi += 2.0 * M_PI;
+    while (phi >= 2.0 * M_PI) phi -= 2.0 * M_PI;
+}
+
 // RubinHipsClient Implementation
 RubinHipsClient::RubinHipsClient(QObject *parent) 
     : QObject(parent), m_activeFetches(0), m_totalFetches(0), 
@@ -54,22 +73,6 @@ void RubinHipsClient::initializeConnections() {
 
 RubinHipsClient::~RubinHipsClient() {
     cancelAllFetches();
-}
-
-void RubinHipsClient::initializeSurveys() {
-    m_surveys["virgo_cluster"] = {
-        "Virgo Cluster (LSSTCam Color)",
-        "https://images.rubinobservatory.org/hips/SVImages_v2/color_ugri",
-        "Southern region of the Virgo Cluster - color visualization",
-        true
-    };
-    
-    m_surveys["virgo_asteroids"] = {
-        "Virgo Cluster with Asteroids", 
-        "https://images.rubinobservatory.org/hips/asteroids/color_ugri",
-        "Virgo Cluster showing detected asteroids",
-        true
-    };
 }
 
 void RubinHipsClient::initializeImageDirectory() {
@@ -485,65 +488,46 @@ bool HipsTile::saveToFile(const QString& filepath) const {
     return written == data.size();
 }
 
-// HipsUtils Implementation
+// Fixed HipsUtils::radecToHealpixNested function
 long long HipsUtils::radecToHealpixNested(double ra_deg, double dec_deg, int order) {
-    qDebug() << "Converting RA:" << ra_deg << "Dec:" << dec_deg << "to HEALPix order" << order;
+    qDebug() << "Converting RA:" << ra_deg << "° Dec:" << dec_deg << "° to HEALPix order" << order;
     
-    // Normalize coordinates
-    normalizeCoordinates(ra_deg, dec_deg);
-    
-    // Convert to HEALPix spherical coordinates
-    double theta = (90.0 - dec_deg) * DEG_TO_RAD;  // Colatitude
-    double phi = ra_deg * DEG_TO_RAD;              // Longitude
-    
-    // Normalize phi to [0, 2π)
-    while (phi < 0) phi += 2.0 * PI;
-    while (phi >= 2.0 * PI) phi -= 2.0 * PI;
-    
-    long long nside = 1LL << order;
-    
-    // Standard HEALPix ring-to-nested conversion
-    double z = std::cos(theta);
-    double za = std::abs(z);
-    
-    long long pixel;
-    
-    if (za <= 2.0/3.0) {
-        // Equatorial region
-        double temp1 = nside * (0.5 + z);
-        double temp2 = nside * phi / (2.0 * PI);
-        
-        long long jp = static_cast<long long>(temp1 - temp2);
-        long long jm = static_cast<long long>(temp1 + temp2);
-        
-        long long ir = nside + 1 + jp - jm;
-        long long kshift = 1 - (ir & 1);
-        long long ip = (jp + jm - nside + kshift + 1) / 2;
-        
-        if (ip >= nside) ip -= nside;
-        
-        pixel = 2 * nside * (nside - 1) + 2 * nside * (ir - 1) + ip;
-    } else {
-        // Polar caps
-        double temp = nside * std::sqrt(3.0 * (1.0 - za));
-        long long jp = static_cast<long long>(temp - 1.0);
-        long long jm = static_cast<long long>(temp + 1.0);
-        
-        long long ir = jp + jm + 1;
-        long long ip = static_cast<long long>(phi * ir / (2.0 * PI));
-        
-        if (z > 0) {
-            pixel = 2 * ir * (ir - 1) + ip;
-        } else {
-            pixel = 12 * nside * nside - 2 * ir * (ir + 1) + ip;
-        }
+    // Validate input coordinates
+    if (dec_deg < -90.0 || dec_deg > 90.0) {
+        qWarning() << "Invalid declination:" << dec_deg;
+        return -1;
     }
     
-    // Convert ring to nested indexing
-    pixel = ringToNested(pixel, nside);
+    // Normalize RA to [0, 360)
+    while (ra_deg < 0.0) ra_deg += 360.0;
+    while (ra_deg >= 360.0) ra_deg -= 360.0;
     
-    qDebug() << "Calculated HEALPix pixel:" << pixel;
-    return pixel;
+    // Convert to HEALPix spherical coordinates
+    double theta = (90.0 - dec_deg) * M_PI / 180.0;  // colatitude in radians [0, π]
+    double phi = ra_deg * M_PI / 180.0;              // longitude in radians [0, 2π]
+    
+    qDebug() << "Converted to theta:" << theta << "phi:" << phi;
+    qDebug() << "Theta in degrees:" << (theta * 180.0 / M_PI) << "Phi in degrees:" << (phi * 180.0 / M_PI);
+    
+    // Validate converted coordinates
+    if (!isValidTheta(theta) || !isValidPhi(phi)) {
+        qWarning() << "Invalid spherical coordinates - theta:" << theta << "phi:" << phi;
+        return -1;
+    }
+    
+    long long nside = 1LL << order;  // nside = 2^order
+    
+    try {
+        Healpix_Base healpix(nside, NEST, SET_NSIDE);
+        pointing pt(theta, phi);
+        long long pixel = healpix.ang2pix(pt);
+        
+        qDebug() << "✓ HEALPix pixel:" << pixel << "using nside:" << nside;
+        return pixel;
+    } catch (const std::exception& e) {
+        qDebug() << "✗ HEALPix calculation error:" << e.what();
+        return -1;
+    }
 }
 
 // Also update the HipsUtils::calculateViewportTiles method to return exactly 24 pixels
@@ -701,75 +685,6 @@ QList<std::shared_ptr<HipsTile>> RubinHipsClient::calculateRequiredTiles(const S
     return tiles;
 }
 
-void RubinHipsClient::fetchTilesForCurrentPointing(TelescopeState *state) {
-    int order = 10;
-    int tileSize = 512;
-    int width = 6, height = 4;
-
-    double centerRa = 188.0;
-    double centerDec = 8.0;
-
-    Healpix_Base healpix(order, NEST, SET_NSIDE);
-    pointing center(Ang2Rad(centerRa), Ang2Rad(centerDec));
-
-    std::vector<TileJob> jobs;
-
-    for (int dy = 0; dy < height; ++dy) {
-        for (int dx = 0; dx < width; ++dx) {
-            double offsetRa = centerRa + (dx - width / 2 + 0.5) * 0.03;
-            double offsetDec = centerDec - (dy - height / 2 + 0.5) * 0.03;
-
-            pointing tilePoint(Ang2Rad(offsetRa), Ang2Rad(offsetDec));
-            int pix = healpix.ang2pix(tilePoint);
-            int dir = (pix / 10000) * 10000;
-
-            QString url = QString("https://hips.images.arizona.edu/rubin-dr0/Norder%1/Dir%2/Npix%3.jpg")
-                            .arg(order)
-                            .arg(dir)
-                            .arg(pix);
-
-            jobs.push_back({pix, dx, dy, url});
-        }
-    }
-
-    QImage mosaic(tileSize * width, tileSize * height, QImage::Format_RGB888);
-    mosaic.fill(Qt::black);
-
-    auto manager = new QNetworkAccessManager(this);
-    int completed = 0;
-
-    for (const auto& job : jobs) {
-        QNetworkRequest request(QUrl(job.url));
-        QNetworkReply *reply = manager->get(request);
-
-        connect(reply, &QNetworkReply::finished, this, [=, &mosaic, &completed]() mutable {
-            if (reply->error() == QNetworkReply::NoError) {
-                QByteArray data = reply->readAll();
-                QImage tile;
-                tile.loadFromData(data);
-
-                QPainter painter(&mosaic);
-                int x = job.tileX * tileSize;
-                int y = job.tileY * tileSize;
-                painter.drawImage(x, y, tile);
-                painter.end();
-            } else {
-                qWarning() << "Tile fetch failed:" << job.url;
-            }
-
-            reply->deleteLater();
-            completed++;
-
-            if (completed == width * height) {
-                QString finalPath = m_imageDirectory + "/current_mosaic.jpg";
-                mosaic.save(finalPath, "JPG", 90);
-
-                if (onImageReady) onImageReady(finalPath);
-            }
-        });
-    }
-}
-
 // Modified URL building to match JavaScript HiPS standards
 QString RubinHipsClient::buildTileUrl(const HipsTile* tile, const QString& survey_name, const QString& format) const {
     if (!m_surveys.contains(survey_name)) {
@@ -850,5 +765,461 @@ void RubinHipsClient::compositeLiveViewImage() {
         // Also save as current live view
         composite.save(tempDir + "/98.jpg", "JPEG", 95);
         if (onImageReady) onImageReady(tempDir + "/98.jpg");
+    }
+}
+
+// Add this helper method to generate a synthetic image when HEALPix fails
+void RubinHipsClient::generateSyntheticImage(double ra_deg, double dec_deg) {
+    qDebug() << "Generating synthetic image for RA:" << ra_deg << "Dec:" << dec_deg;
+    
+    QImage synthetic(1024, 768, QImage::Format_RGB888);
+    synthetic.fill(QColor(5, 5, 15)); // Dark sky
+    
+    QPainter painter(&synthetic);
+    painter.setRenderHint(QPainter::Antialiasing);
+    
+    // Add coordinate info
+    painter.setPen(QColor(100, 150, 200, 200));
+    painter.setFont(QFont("Arial", 14));
+    QString coordText = QString("RA: %1° Dec: %2°\nRubin Observatory\nSynthetic Field")
+                       .arg(ra_deg, 0, 'f', 2)
+                       .arg(dec_deg, 0, 'f', 2);
+    painter.drawText(20, 30, coordText);
+    
+    // Add some stars
+    QRandomGenerator* rng = QRandomGenerator::global();
+    rng->seed(static_cast<quint32>(ra_deg * 1000 + dec_deg * 100));
+    
+    for (int i = 0; i < 300; ++i) {
+        int x = rng->bounded(synthetic.width());
+        int y = rng->bounded(synthetic.height());
+        int brightness = 50 + rng->bounded(150);
+        
+        painter.setPen(QColor(brightness, brightness, brightness));
+        painter.drawPoint(x, y);
+    }
+    
+    painter.end();
+    
+    QString syntheticPath = m_imageDirectory + "/synthetic_field.jpg";
+    if (synthetic.save(syntheticPath, "JPG", 90)) {
+        qDebug() << "✓ Generated synthetic image:" << syntheticPath;
+        if (onImageReady) onImageReady(syntheticPath);
+    }
+}
+// Enhanced RubinHipsClient with multiple survey fallbacks and proper 404 handling
+
+void RubinHipsClient::initializeSurveys() {
+    // Add multiple survey options with better sky coverage
+    m_surveys["rubin_dr0"] = {
+        "Rubin DR0 Survey",
+        "https://hips.images.arizona.edu/rubin-dr0",
+        "Rubin Observatory Data Release 0",
+        true
+    };
+    
+    m_surveys["virgo_cluster"] = {
+        "Virgo Cluster (LSSTCam Color)",
+        "https://images.rubinobservatory.org/hips/SVImages_v2/color_ugri",
+        "Southern region of the Virgo Cluster - color visualization",
+        true
+    };
+    
+    m_surveys["virgo_asteroids"] = {
+        "Virgo Cluster with Asteroids", 
+        "https://images.rubinobservatory.org/hips/asteroids/color_ugri",
+        "Virgo Cluster showing detected asteroids",
+        true
+    };
+    
+    // Add DSS (Digitized Sky Survey) as reliable fallback
+    m_surveys["dss2_color"] = {
+        "DSS2 Color",
+        "http://alasky.u-strasbg.fr/DSS/DSSColor",
+        "Digitized Sky Survey 2 Color - full sky coverage",
+        true
+    };
+    
+    m_surveys["2mass"] = {
+        "2MASS All-Sky Survey",
+        "http://alasky.u-strasbg.fr/2MASS/Color",
+        "2MASS infrared all-sky survey",
+        true
+    };
+}
+
+// Enhanced fetchTilesForCurrentPointing with multiple survey fallback
+void RubinHipsClient::fetchTilesForCurrentPointing(TelescopeState *state) {
+    int order = 10;  // Back to order 10 since working URL uses this
+    int nside = 1 << order;
+    int tileSize = 512;
+    int width = 6, height = 4;
+
+    // Convert telescope coordinates from radians to degrees
+    double centerRa = state->ra * 180.0 / M_PI;
+    double centerDec = state->dec * 180.0 / M_PI;
+    
+    qDebug() << "Telescope coordinates - RA:" << centerRa << "° Dec:" << centerDec << "°";
+
+    // Try surveys in order of preference
+    QStringList surveyPriority = {"virgo_asteroids", "virgo_cluster", "rubin_dr0", "dss2_color"};
+    
+    for (const QString& surveyName : surveyPriority) {
+        qDebug() << "Attempting to fetch tiles from survey:" << surveyName;
+        
+        if (attemptTileFetch(state, surveyName, order, nside, tileSize, width, height)) {
+            qDebug() << "Successfully initiated fetch from" << surveyName;
+            return;
+        }
+    }
+    
+    // If all surveys fail, generate synthetic image
+    qWarning() << "All HiPS surveys failed, generating synthetic image";
+    generateSyntheticImage(centerRa, centerDec);
+}
+
+
+QString RubinHipsClient::buildTileUrlForSurvey(const QString& surveyName, int order, int pix) {
+    if (!m_surveys.contains(surveyName)) {
+        return QString();
+    }
+    
+    const auto& survey = m_surveys[surveyName];
+    QString baseUrl = survey.base_url;
+    
+    // Different URL patterns for different services
+    if (surveyName == "rubin_dr0") {
+        int dir = (pix / 10000) * 10000;
+        return QString("%1/Norder%2/Dir%3/Npix%4.webp")
+               .arg(baseUrl).arg(order).arg(dir).arg(pix);
+    }
+    else if (surveyName.startsWith("virgo")) {
+        int dir = (pix / 10000) * 10000;
+        // FIXED: Rubin Observatory uses WebP format, not JPG
+        return QString("%1/Norder%2/Dir%3/Npix%4.webp")
+               .arg(baseUrl).arg(order).arg(dir).arg(pix);
+    }
+    else if (surveyName == "dss2_color" || surveyName == "2mass") {
+        // Standard HiPS format for CDS services
+        int dir = (pix / 10000) * 10000;
+        return QString("%1/Norder%2/Dir%3/Npix%4.png")
+               .arg(baseUrl).arg(order).arg(dir).arg(pix);
+    }
+    
+    return QString();
+}
+
+bool RubinHipsClient::startTileDownload(const std::vector<TileJob>& jobs, 
+                                        const QString& surveyName,
+                                        int tileSize, int width, int height) {
+    
+    QImage* mosaic = new QImage(tileSize * width, tileSize * height, QImage::Format_RGB888);
+    mosaic->fill(Qt::black);
+
+    auto manager = new QNetworkAccessManager(this);
+    int* completed = new int(0);
+    int* successful = new int(0);
+    int totalJobs = jobs.size();
+
+    qDebug() << "Starting download of" << totalJobs << "tiles from" << surveyName;
+
+    for (const auto& job : jobs) {
+        QNetworkRequest request(QUrl(job.url));
+        // Add proper headers matching the working browser request
+        request.setHeader(QNetworkRequest::UserAgentHeader, 
+            "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/18.5 Safari/605.1.15");
+        request.setRawHeader("Accept", "image/webp,image/avif,image/jxl,image/heic,image/heic-sequence,video/*;q=0.8,image/png,image/svg+xml,image/*;q=0.8,*/*;q=0.5");
+        request.setRawHeader("Accept-Encoding", "gzip, deflate, br");
+        request.setRawHeader("Accept-Language", "en-GB,en;q=0.9");
+        request.setRawHeader("Sec-Fetch-Dest", "image");
+        request.setRawHeader("Sec-Fetch-Mode", "cors");
+        request.setRawHeader("Sec-Fetch-Site", "cross-site");
+        
+        QNetworkReply *reply = manager->get(request);
+
+        connect(reply, &QNetworkReply::finished, this, 
+                [=, &job](){ handleTileReply(reply, job, mosaic, completed, successful, 
+                                           totalJobs, surveyName, tileSize); });
+    }
+
+    return true;
+}
+
+
+void RubinHipsClient::addSurveyOverlay(QImage& image, const QString& surveyName, 
+                                       int successful, int total) {
+    QPainter painter(&image);
+    painter.setRenderHint(QPainter::Antialiasing);
+    
+    // Add survey information overlay
+    painter.setPen(QColor(255, 255, 255, 200));
+    painter.setFont(QFont("Arial", 12, QFont::Bold));
+    
+    QString surveyInfo = QString("%1\n%2/%3 tiles loaded")
+                        .arg(m_surveys[surveyName].name)
+                        .arg(successful)
+                        .arg(total);
+    
+    QRect textRect = painter.fontMetrics().boundingRect(surveyInfo);
+    QRect bgRect = textRect.adjusted(-10, -5, 10, 5);
+    bgRect.moveTopLeft(QPoint(10, 10));
+    
+    // Semi-transparent background
+    painter.fillRect(bgRect, QColor(0, 0, 0, 150));
+    painter.drawText(bgRect.adjusted(10, 5, -10, -5), Qt::AlignLeft, surveyInfo);
+    
+    painter.end();
+}
+// Enhanced RubinHipsClient.cpp with detailed debugging and URL generation fixes
+
+void RubinHipsClient::handleTileReply(QNetworkReply* reply, const TileJob& job, 
+                                      QImage* mosaic, int* completed, int* successful,
+                                      int totalJobs, const QString& surveyName, int tileSize) {
+    
+    (*completed)++;
+    
+    // ENHANCED DEBUGGING
+    qDebug() << "=== Tile Reply Debug ===";
+    qDebug() << "URL:" << reply->request().url().toString();
+    qDebug() << "HTTP Status:" << reply->attribute(QNetworkRequest::HttpStatusCodeAttribute).toInt();
+    qDebug() << "Error:" << reply->error() << reply->errorString();
+    qDebug() << "Content-Type:" << reply->header(QNetworkRequest::ContentTypeHeader).toString();
+    
+    if (reply->error() == QNetworkReply::NoError) {
+        QByteArray data = reply->readAll();
+        qDebug() << "Data size:" << data.size() << "bytes";
+        qDebug() << "Data starts with:" << data.left(16).toHex();
+        
+        if (data.size() > 0) {
+            QImage tile;
+            
+            // Try to load the image data
+            if (tile.loadFromData(data)) {
+                qDebug() << "✓ Image decoded successfully - size:" << tile.size();
+                
+                QPainter painter(mosaic);
+                int x = job.tileX * tileSize;
+                int y = job.tileY * tileSize;
+                QImage scaledTile = tile.scaled(tileSize, tileSize, 
+                                               Qt::KeepAspectRatio, 
+                                               Qt::SmoothTransformation);
+                painter.drawImage(x, y, scaledTile);
+                painter.end();
+                
+                (*successful)++;
+                qDebug() << "✓ Loaded tile" << job.pix << "from" << surveyName << "at position [" << job.tileX << "," << job.tileY << "]";
+            } else {
+                qDebug() << "✗ Failed to decode image data for tile" << job.pix;
+                qDebug() << "  Data preview:" << data.left(64);
+                
+                // Try saving raw data to debug
+                QString debugPath = m_imageDirectory + QString("/debug_tile_%1.webp").arg(job.pix);
+                QFile debugFile(debugPath);
+                if (debugFile.open(QIODevice::WriteOnly)) {
+                    debugFile.write(data);
+                    debugFile.close();
+                    qDebug() << "  Saved raw data to:" << debugPath;
+                }
+            }
+        } else {
+            qDebug() << "✗ Empty response for tile" << job.pix;
+        }
+    } else {
+        int httpStatus = reply->attribute(QNetworkRequest::HttpStatusCodeAttribute).toInt();
+        qDebug() << "✗ Network error for tile" << job.pix << "- HTTP" << httpStatus << ":" << reply->errorString();
+        
+        // Read error response body
+        QByteArray errorData = reply->readAll();
+        if (!errorData.isEmpty()) {
+            qDebug() << "  Error response:" << QString::fromUtf8(errorData.left(200));
+        }
+    }
+
+    reply->deleteLater();
+
+    qDebug() << "Progress:" << *completed << "/" << totalJobs 
+             << "completed, " << *successful << "successful";
+
+    // When all tiles are processed
+    if (*completed == totalJobs) {
+        QString result = QString("Completed %1 with %2/%3 successful tiles")
+                        .arg(surveyName).arg(*successful).arg(totalJobs);
+        qDebug() << result;
+        
+        // Save the mosaic regardless of success rate
+        QString finalPath = m_imageDirectory + QString("/mosaic_%1.jpg").arg(surveyName);
+        
+        if (mosaic->save(finalPath, "JPG", 90)) {
+            qDebug() << "✓ Saved mosaic to" << finalPath;
+            
+            // Add survey info overlay
+            addSurveyOverlay(*mosaic, surveyName, *successful, totalJobs);
+            mosaic->save(finalPath, "JPG", 90);
+            
+            if (onImageReady) onImageReady(finalPath);
+        }
+        
+        // Clean up
+        delete mosaic;
+        delete completed;
+        delete successful;
+    }
+}
+
+// Also add debugging to see what URLs are actually being generated
+bool RubinHipsClient::attemptTileFetch(TelescopeState *state, const QString& surveyName, 
+                                       int order, int nside, int tileSize, int width, int height) {
+    
+    if (!m_surveys.contains(surveyName)) {
+        return false;
+    }
+    
+    double centerRa = state->ra * 180.0 / M_PI;
+    double centerDec = state->dec * 180.0 / M_PI;
+
+    try {
+        Healpix_Base healpix(nside, NEST, SET_NSIDE);
+        
+        std::vector<TileJob> jobs;
+        int validJobs = 0;
+
+        for (int dy = 0; dy < height; ++dy) {
+            for (int dx = 0; dx < width; ++dx) {
+                // Calculate offset - smaller for higher order (order 10 = smaller tiles)
+                double offsetRa = centerRa + (dx - width / 2.0 + 0.5) * 0.1;   // 0.1° per tile for order 10
+                double offsetDec = centerDec - (dy - height / 2.0 + 0.5) * 0.1;
+
+                // Normalize coordinates
+                while (offsetRa < 0.0) offsetRa += 360.0;
+                while (offsetRa >= 360.0) offsetRa -= 360.0;
+                if (offsetDec < -90.0) offsetDec = -90.0;
+                if (offsetDec > 90.0) offsetDec = 90.0;
+
+                // Convert to HEALPix coordinates
+                double theta = (90.0 - offsetDec) * M_PI / 180.0;
+                double phi = offsetRa * M_PI / 180.0;
+
+                validateAndClampCoordinates(theta, phi);
+
+                pointing tilePoint(theta, phi);
+                int pix = healpix.ang2pix(tilePoint);
+                
+                // Build URL for this survey
+                QString url = buildTileUrlForSurvey(surveyName, order, pix);
+                if (url.isEmpty()) continue;
+
+                qDebug() << "Generated URL for tile [" << dx << "," << dy << "] pixel" << pix << ":" << url;
+                jobs.push_back({pix, dx, dy, url});
+                validJobs++;
+            }
+        }
+
+        if (validJobs == 0) {
+            qDebug() << "No valid jobs generated for survey" << surveyName;
+            return false;
+        }
+
+        qDebug() << "Generated" << validJobs << "tile jobs for survey" << surveyName;
+        
+        // Start downloading tiles
+        return startTileDownload(jobs, surveyName, tileSize, width, height);
+
+    } catch (const std::exception& e) {
+        qDebug() << "Error with survey" << surveyName << ":" << e.what();
+        return false;
+    }
+}
+
+/*
+// Add a test method to verify a known working URL
+void RubinHipsClient::testKnownWorkingURL() {
+    // Test the URL you provided that works in the browser
+    QString testUrl = "https://images.rubinobservatory.org/hips/asteroids/color_ugri/Norder10/Dir7090000/Npix7098582.webp";
+    
+    qDebug() << "Testing known working URL:" << testUrl;
+    
+    QNetworkRequest request(QUrl(testUrl));
+    
+    QNetworkReply *reply = m_networkManager->get(request);
+    
+    connect(reply, &QNetworkReply::finished, this, [=]() {
+        qDebug() << "=== TEST URL RESPONSE ===";
+        qDebug() << "HTTP Status:" << reply->attribute(QNetworkRequest::HttpStatusCodeAttribute).toInt();
+        qDebug() << "Error:" << reply->error() << reply->errorString();
+        qDebug() << "Content-Type:" << reply->header(QNetworkRequest::ContentTypeHeader).toString();
+        
+        if (reply->error() == QNetworkReply::NoError) {
+            QByteArray data = reply->readAll();
+            qDebug() << "Response size:" << data.size() << "bytes";
+            qDebug() << "Data starts with:" << data.left(16).toHex();
+            
+            QImage testImage;
+            if (testImage.loadFromData(data)) {
+                qDebug() << "✓ Test image loaded successfully! Size:" << testImage.size();
+                
+                // Save test image
+                QString testPath = m_imageDirectory + "/test_working_tile.webp";
+                QFile testFile(testPath);
+                if (testFile.open(QIODevice::WriteOnly)) {
+                    testFile.write(data);
+                    testFile.close();
+                    qDebug() << "✓ Saved test image to:" << testPath;
+                }
+            } else {
+                qDebug() << "✗ Failed to decode test image";
+            }
+        }
+        
+        reply->deleteLater();
+    });
+}
+*/
+
+// Let's also add a method to compare our generated URLs with the working one
+void RubinHipsClient::compareURLGeneration(TelescopeState *state) {
+    double centerRa = state->ra * 180.0 / M_PI;
+    double centerDec = state->dec * 180.0 / M_PI;
+    
+    qDebug() << "=== URL GENERATION COMPARISON ===";
+    qDebug() << "Known working URL: https://images.rubinobservatory.org/hips/asteroids/color_ugri/Norder10/Dir7090000/Npix7098582.webp";
+    qDebug() << "Known working pixel: 7098582";
+    qDebug() << "Our center coordinates: RA" << centerRa << "° Dec" << centerDec << "°";
+    
+    try {
+        int order = 10;
+        int nside = 1 << order;
+        Healpix_Base healpix(nside, NEST, SET_NSIDE);
+        
+        // Generate a few URLs around our center position
+        for (int i = 0; i < 5; i++) {
+            double testRa = centerRa + (i - 2) * 0.1;  // ±0.2° around center
+            double testDec = centerDec;
+            
+            double theta = (90.0 - testDec) * M_PI / 180.0;
+            double phi = testRa * M_PI / 180.0;
+            
+            pointing testPoint(theta, phi);
+            int pix = healpix.ang2pix(testPoint);
+            
+            QString url = buildTileUrlForSurvey("virgo_asteroids", order, pix);
+            qDebug() << "Generated URL" << i << "pixel" << pix << ":" << url;
+        }
+        
+        // Try to reverse engineer the working pixel coordinates
+        qDebug() << "=== REVERSE ENGINEERING WORKING PIXEL ===";
+        int workingPixel = 7098582;
+        pointing workingPoint = healpix.pix2ang(workingPixel);
+        double workingTheta = workingPoint.theta;
+        double workingPhi = workingPoint.phi;
+        double workingRa = workingPhi * 180.0 / M_PI;
+        double workingDec = 90.0 - workingTheta * 180.0 / M_PI;
+        
+        qDebug() << "Working pixel" << workingPixel << "corresponds to:";
+        qDebug() << "  RA:" << workingRa << "° Dec:" << workingDec << "°";
+        qDebug() << "  Distance from our center:" << 
+                    sqrt(pow(workingRa - centerRa, 2) + pow(workingDec - centerDec, 2)) << "°";
+        
+    } catch (const std::exception& e) {
+        qDebug() << "Error in URL comparison:" << e.what();
     }
 }

@@ -25,7 +25,7 @@ constexpr double DEG_TO_RAD = PI / 180.0;
 constexpr double RAD_TO_DEG = 180.0 / PI;
 
 struct TileJob {
-    int healpixIndex;
+    int pix;
     int tileX, tileY; // in 0..5 and 0..3
     QString url;
 };
@@ -109,7 +109,10 @@ class RubinHipsClient : public QObject {
 public:
     explicit RubinHipsClient(QObject *parent = nullptr);
     ~RubinHipsClient();
-    
+
+    void testKnownWorkingURL();
+    void compareURLGeneration(TelescopeState *state);
+  
     // Main interface methods
     void fetchTilesForCurrentPointing(TelescopeState* telescopeState);
     void fetchTilesAsync(const SkyCoordinates& coords, const QString& survey_name);
@@ -140,12 +143,23 @@ private:
     QList<std::shared_ptr<HipsTile>> calculateRequiredTiles(const SkyCoordinates& coords);
     void fetchSingleTile(std::shared_ptr<HipsTile> tile, const QString& survey_name);
     void processFetchedTile(std::shared_ptr<HipsTile> tile, const QString& survey_name);
-    
+    void generateSyntheticImage(double ra_deg, double dec_deg);
+  
     // URL and image handling
     QString buildTileUrl(const HipsTile* tile, const QString& survey_name, const QString& format = "webp") const;
     QString generateRealisticImage(const SkyCoordinates& coords, const QString& survey_name);
     void updateTelescopeImages(const QStringList& filenames);
     void compositeLiveViewImage();
+    bool attemptTileFetch(TelescopeState *state, const QString& surveyName, 
+                         int order, int nside, int tileSize, int width, int height);
+    QString buildTileUrlForSurvey(const QString& surveyName, int order, int pix);
+    bool startTileDownload(const std::vector<TileJob>& jobs, const QString& surveyName,
+                          int tileSize, int width, int height);
+    void handleTileReply(QNetworkReply* reply, const TileJob& job, QImage* mosaic, 
+                        int* completed, int* successful, int totalJobs, 
+                        const QString& surveyName, int tileSize);
+    void addSurveyOverlay(QImage& image, const QString& surveyName, 
+                         int successful, int total);
     
     // Member variables
     QNetworkAccessManager* m_networkManager;
