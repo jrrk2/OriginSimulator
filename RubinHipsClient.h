@@ -94,10 +94,9 @@ public: // Methods (no longer slots)
     void cancelAllFetches();
 
 private: // Methods (no longer slots)
+    void compositeLiveViewImage();
     void handleNetworkReply();
     void onFetchTimeout();
-
-private:
     // Network management
     QNetworkAccessManager* m_networkManager;
     QTimer* m_timeoutTimer;

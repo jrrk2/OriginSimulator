@@ -1,6 +1,7 @@
 #include "RubinHipsClient.h"
 #include "TelescopeState.h"
 #include <QDebug>
+#include <QRegularExpression>
 #include <QCoreApplication>
 #include <QStandardPaths>
 #include <QFileInfo>
@@ -10,7 +11,7 @@
 #include <cmath>
 
 // Constants
-constexpr int MAX_CONCURRENT_FETCHES = 4;
+constexpr int MAX_CONCURRENT_FETCHES = 12;
 constexpr int FETCH_TIMEOUT_MS = 10000;
 constexpr double PI = 3.14159265358979323846;
 constexpr double DEG_TO_RAD = PI / 180.0;
@@ -269,23 +270,19 @@ void RubinHipsClient::fetchTilesAsync(const SkyCoordinates& coords, const QStrin
 
 QList<std::shared_ptr<HipsTile>> RubinHipsClient::calculateRequiredTiles(const SkyCoordinates& coords) {
     QList<std::shared_ptr<HipsTile>> tiles;
+        
+        // Create 6×4 grid for 3056×2048 live view
+        int tilesX = 6, tilesY = 4;
+        qDebug() << "🧩 Creating" << (tilesX*tilesY) << "tile grid for live view";
+        
+        long long basePixel = (coords.hips_order >= 11) ? 28395575 : 105450;
+        for (int y = 0; y < tilesY; y++) {
+            for (int x = 0; x < tilesX; x++) {
+                tiles.append(std::make_shared<HipsTile>(coords.hips_order, basePixel + y * 100 + x));
+            }
+        }
+        return tiles;
     
-    // Get known working pixels for the order
-    QList<long long> candidate_pixels = HipsUtils::getKnownWorkingPixels(coords.hips_order);
-    
-    if (candidate_pixels.isEmpty()) {
-        // Calculate pixel from coordinates
-        long long central_pixel = HipsUtils::radecToHealpixNested(coords.ra_deg, coords.dec_deg, coords.hips_order);
-        candidate_pixels = HipsUtils::calculateNeighborPixels(central_pixel, coords.hips_order);
-    }
-    
-    // Create tiles for the first few candidate pixels
-    int max_tiles = std::min(4, static_cast<int>(candidate_pixels.size()));
-    for (int i = 0; i < max_tiles; ++i) {
-        tiles.append(std::make_shared<HipsTile>(coords.hips_order, candidate_pixels[i]));
-    }
-    
-    return tiles;
 }
 
 void RubinHipsClient::fetchSingleTile(std::shared_ptr<HipsTile> tile, const QString& survey_name) {
@@ -526,6 +523,7 @@ QString RubinHipsClient::generateRealisticImage(const SkyCoordinates& coords, co
 }
 
 void RubinHipsClient::updateTelescopeImages(const QStringList& filenames) {
+    compositeLiveViewImage();
     if (!filenames.isEmpty() && onTilesAvailable) {
         onTilesAvailable(filenames);
     }
@@ -667,4 +665,73 @@ QList<long long> RubinHipsClient::HipsUtils::calculateNeighborPixels(long long c
     return pixels;
 }
 
+
+
+void RubinHipsClient::compositeLiveViewImage() {
+    QDir dir(m_imageDirectory);
+    QStringList allTiles = dir.entryList(QStringList() << "*order1[1-9]_pixel*.webp", QDir::Files);
+    
+    if (allTiles.size() < 4) return;
+    
+    // Sort tiles by pixel number to maintain astronomical coordinate order
+    QMap<long long, QString> sortedTileMap;
+    for (const QString& tileFile : allTiles) {
+        // Extract pixel number from filename: "virgo_cluster_order11_pixel28395575.webp"
+        QRegularExpression regex("pixel(\\d+)");
+        QRegularExpressionMatch match = regex.match(tileFile);
+        if (match.hasMatch()) {
+            long long pixelNum = match.captured(1).toLongLong();
+            sortedTileMap[pixelNum] = tileFile;
+        }
+    }
+    
+    // Convert to sorted list
+    QStringList tiles = sortedTileMap.values();
+    qDebug() << "🗂️  Sorted" << tiles.size() << "tiles by astronomical position";
+    
+    qDebug() << "🧩 Compositing" << tiles.size() << "tiles into 3056×2048 live view";
+    
+    const int W = 3056, H = 2048, TX = 6, TY = 4;
+    const int tw = W/TX, th = H/TY;
+    
+    QImage composite(W, H, QImage::Format_RGB888);
+    composite.fill(QColor(5, 5, 10));
+    QPainter p(&composite);
+    p.setRenderHint(QPainter::SmoothPixmapTransform);
+    p.setCompositionMode(QPainter::CompositionMode_SourceOver);
+    
+    // Calculate grid positions based on pixel numbers
+    for (int i = 0; i < tiles.size() && i < (TX * TY); i++) {
+        QString tileFile = tiles[i];
+        
+        // Calculate grid position: arrange tiles in reading order (left-to-right, top-to-bottom)
+        int gridX = i % TX;  // 0,1,2,3,4,5,0,1,2...
+        int gridY = i / TX;  // 0,0,0,0,0,0,1,1,1...
+        
+        qDebug() << "📍 Tile" << (i+1) << "at grid position (" << gridX << "," << gridY << ")";
+        
+        QImage tile;
+        if (tile.load(QDir(m_imageDirectory).absoluteFilePath(tileFile))) {
+            QImage scaled = tile.scaled(tw, th, Qt::KeepAspectRatioByExpanding, Qt::SmoothTransformation);
+            
+            // Calculate pixel position
+            int destX = gridX * tw;
+            int destY = gridY * th;
+            
+            p.drawImage(destX, destY, scaled);
+            qDebug() << "🧩 Placed" << tileFile << "at pixel (" << destX << "," << destY << ")";
+        }
+    }
+    p.end();
+    
+    QString tempDir = QDir::homePath() + "/Library/Application Support/OriginSimulator/Images/Temp";
+    QDir().mkpath(tempDir);
+    QString output = tempDir + "/live_view_3056x2048.jpg";
+    
+    if (composite.save(output, "JPEG", 95)) {
+        qDebug() << "✅ Live view composite:" << output;
+        composite.save(tempDir + "/98.jpg", "JPEG", 95);
+        if (onImageReady) onImageReady(tempDir + "/98.jpg");
+    }
+}
 // No MOC file needed since we removed Q_OBJECT
