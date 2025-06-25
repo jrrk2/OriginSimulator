@@ -1,6 +1,6 @@
- // ===================================================================
+#include "healpix_base.h"
+#include "pointing.h"
 
-// HipsTypes.cpp - Implementation of the classes
 #include "RubinHipsClient.h"
 #include "TelescopeState.h"
 #include <QDebug>
@@ -20,6 +20,8 @@
 // Constants
 constexpr int MAX_CONCURRENT_FETCHES = 6;
 constexpr int FETCH_TIMEOUT_MS = 15000;
+
+double Ang2Rad(double x) { return x * DEG_TO_RAD; }
 
 // RubinHipsClient Implementation
 RubinHipsClient::RubinHipsClient(QObject *parent) 
@@ -699,38 +701,73 @@ QList<std::shared_ptr<HipsTile>> RubinHipsClient::calculateRequiredTiles(const S
     return tiles;
 }
 
-// Modified coordinate conversion for telescope state
-void RubinHipsClient::fetchTilesForCurrentPointing(TelescopeState* telescopeState) {
-    if (!telescopeState) {
-        if (onFetchError) {
-            onFetchError("Invalid telescope state");
+void RubinHipsClient::fetchTilesForCurrentPointing(TelescopeState *state) {
+    int order = 10;
+    int tileSize = 512;
+    int width = 6, height = 4;
+
+    double centerRa = 188.0;
+    double centerDec = 8.0;
+
+    Healpix_Base healpix(order, NEST, SET_NSIDE);
+    pointing center(Ang2Rad(centerRa), Ang2Rad(centerDec));
+
+    std::vector<TileJob> jobs;
+
+    for (int dy = 0; dy < height; ++dy) {
+        for (int dx = 0; dx < width; ++dx) {
+            double offsetRa = centerRa + (dx - width / 2 + 0.5) * 0.03;
+            double offsetDec = centerDec - (dy - height / 2 + 0.5) * 0.03;
+
+            pointing tilePoint(Ang2Rad(offsetRa), Ang2Rad(offsetDec));
+            int pix = healpix.ang2pix(tilePoint);
+            int dir = (pix / 10000) * 10000;
+
+            QString url = QString("https://hips.images.arizona.edu/rubin-dr0/Norder%1/Dir%2/Npix%3.jpg")
+                            .arg(order)
+                            .arg(dir)
+                            .arg(pix);
+
+            jobs.push_back({pix, dx, dy, url});
         }
-        return;
     }
-    
-    // Standard coordinate conversion from radians to degrees
-    double ra_deg = telescopeState->ra * RAD_TO_DEG;
-    double dec_deg = telescopeState->dec * RAD_TO_DEG;
-    double fov_deg = std::max(telescopeState->fovX, telescopeState->fovY) * RAD_TO_DEG;
-    
-    qDebug() << "=== TELESCOPE COORDINATE CONVERSION ===";
-    qDebug() << "Raw RA:" << telescopeState->ra << "rad →" << ra_deg << "°";
-    qDebug() << "Raw Dec:" << telescopeState->dec << "rad →" << dec_deg << "°";
-    qDebug() << "FOV:" << fov_deg << "°";
-    
-    // Ensure reasonable FOV for HiPS tiling
-    if (fov_deg < 0.1) fov_deg = 1.0;   // Minimum 1 degree
-    if (fov_deg > 180.0) fov_deg = 60.0; // Maximum 60 degrees
-    
-    // Create coordinates with telescope viewport dimensions
-    SkyCoordinates coords(ra_deg, dec_deg, fov_deg, 1024, 768);
-    
-    qDebug() << "🌌 Fetching HiPS tiles for telescope pointing:" << coords.toString();
-    
-    // Use standard survey selection
-    QString survey = "virgo_cluster"; // Default survey
-    
-    fetchTilesAsync(coords, survey);
+
+    QImage mosaic(tileSize * width, tileSize * height, QImage::Format_RGB888);
+    mosaic.fill(Qt::black);
+
+    auto manager = new QNetworkAccessManager(this);
+    int completed = 0;
+
+    for (const auto& job : jobs) {
+        QNetworkRequest request(QUrl(job.url));
+        QNetworkReply *reply = manager->get(request);
+
+        connect(reply, &QNetworkReply::finished, this, [=, &mosaic, &completed]() mutable {
+            if (reply->error() == QNetworkReply::NoError) {
+                QByteArray data = reply->readAll();
+                QImage tile;
+                tile.loadFromData(data);
+
+                QPainter painter(&mosaic);
+                int x = job.tileX * tileSize;
+                int y = job.tileY * tileSize;
+                painter.drawImage(x, y, tile);
+                painter.end();
+            } else {
+                qWarning() << "Tile fetch failed:" << job.url;
+            }
+
+            reply->deleteLater();
+            completed++;
+
+            if (completed == width * height) {
+                QString finalPath = m_imageDirectory + "/current_mosaic.jpg";
+                mosaic.save(finalPath, "JPG", 90);
+
+                if (onImageReady) onImageReady(finalPath);
+            }
+        });
+    }
 }
 
 // Modified URL building to match JavaScript HiPS standards

@@ -24,6 +24,12 @@ constexpr double PI = 3.14159265358979323846;
 constexpr double DEG_TO_RAD = PI / 180.0;
 constexpr double RAD_TO_DEG = 180.0 / PI;
 
+struct TileJob {
+    int healpixIndex;
+    int tileX, tileY; // in 0..5 and 0..3
+    QString url;
+};
+
 // Sky Coordinates Class
 class SkyCoordinates {
 public:

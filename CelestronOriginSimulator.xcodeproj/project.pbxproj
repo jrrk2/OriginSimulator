@@ -36,6 +36,12 @@
 		A5F48226AD16997661123CAF /* QtGui.framework in Link Binary With Libraries */ = {isa = PBXBuildFile; fileRef = 75BB98347AA20D28579DDB5E /* QtGui.framework */; };
 		A99B2AA0F9CBBDD12BA126A4 /* DiskArbitration.framework in Link Binary With Libraries */ = {isa = PBXBuildFile; fileRef = 2B774D8E4178765CE52EAAF5 /* DiskArbitration.framework */; };
 		AB19AC5D2E0ACB5F00E961DC /* RubinHipsClient.cpp in Compile Sources */ = {isa = PBXBuildFile; fileRef = AB19AC5C2E0ACB5F00E961DC /* RubinHipsClient.cpp */; };
+		AB19AC5F2E0BFCAB00E961DC /* error_handling.cc in Compile Sources */ = {isa = PBXBuildFile; fileRef = AB19AC5E2E0BFCAB00E961DC /* error_handling.cc */; };
+		AB19AC612E0BFD0A00E961DC /* healpix_base.cc in Compile Sources */ = {isa = PBXBuildFile; fileRef = AB19AC602E0BFD0A00E961DC /* healpix_base.cc */; };
+		AB19AC632E0BFD5B00E961DC /* geom_utils.cc in Compile Sources */ = {isa = PBXBuildFile; fileRef = AB19AC622E0BFD5B00E961DC /* geom_utils.cc */; };
+		AB19AC652E0BFDD100E961DC /* healpix_tables.cc in Compile Sources */ = {isa = PBXBuildFile; fileRef = AB19AC642E0BFDD100E961DC /* healpix_tables.cc */; };
+		AB19AC672E0BFE1300E961DC /* string_utils.cc in Compile Sources */ = {isa = PBXBuildFile; fileRef = AB19AC662E0BFE1300E961DC /* string_utils.cc */; };
+		AB19AC692E0BFE5100E961DC /* pointing.cc in Compile Sources */ = {isa = PBXBuildFile; fileRef = AB19AC682E0BFE5100E961DC /* pointing.cc */; };
 		B3FE8FAC746D3D5BB24FA398 /* Metal.framework in Link Binary With Libraries */ = {isa = PBXBuildFile; fileRef = 1B2543FCC48E9436F21C4F63 /* Metal.framework */; };
 		B69C44C810DF52361AD5F1C2 /* moc_CelestronOriginSimulator.cpp in Compile Sources */ = {isa = PBXBuildFile; fileRef = EC959F23522179EA1074245B /* moc_CelestronOriginSimulator.cpp */; settings = {ATTRIBUTES = (); }; };
 		D5711FDC6A48F569044E27C9 /* QtNetwork.framework in Link Binary With Libraries */ = {isa = PBXBuildFile; fileRef = CBB5D29B2C34BC7472FAD754 /* QtNetwork.framework */; };
@@ -95,6 +101,12 @@
 		AA7E27D039640ED84FB30460 /* CommandHandler.cpp */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.cpp.cpp; name = CommandHandler.cpp; path = /Users/jonathan/OriginSimulator/CommandHandler.cpp; sourceTree = "<absolute>"; };
 		AB19AC5B2E0ACB5F00E961DC /* RubinHipsClient.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; path = RubinHipsClient.h; sourceTree = "<group>"; };
 		AB19AC5C2E0ACB5F00E961DC /* RubinHipsClient.cpp */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.cpp.cpp; path = RubinHipsClient.cpp; sourceTree = "<group>"; };
+		AB19AC5E2E0BFCAB00E961DC /* error_handling.cc */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.cpp.cpp; name = error_handling.cc; path = healpixmirror/src/cxx/cxxsupport/error_handling.cc; sourceTree = "<group>"; };
+		AB19AC602E0BFD0A00E961DC /* healpix_base.cc */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.cpp.cpp; name = healpix_base.cc; path = healpixmirror/src/cxx/Healpix_cxx/healpix_base.cc; sourceTree = "<group>"; };
+		AB19AC622E0BFD5B00E961DC /* geom_utils.cc */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.cpp.cpp; name = geom_utils.cc; path = healpixmirror/src/cxx/cxxsupport/geom_utils.cc; sourceTree = "<group>"; };
+		AB19AC642E0BFDD100E961DC /* healpix_tables.cc */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.cpp.cpp; name = healpix_tables.cc; path = healpixmirror/src/cxx/Healpix_cxx/healpix_tables.cc; sourceTree = "<group>"; };
+		AB19AC662E0BFE1300E961DC /* string_utils.cc */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.cpp.cpp; name = string_utils.cc; path = healpixmirror/src/cxx/cxxsupport/string_utils.cc; sourceTree = "<group>"; };
+		AB19AC682E0BFE5100E961DC /* pointing.cc */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.cpp.cpp; name = pointing.cc; path = healpixmirror/src/cxx/cxxsupport/pointing.cc; sourceTree = "<group>"; };
 		B2D32344E11AE2334C450755 /* moc_CommandHandler.cpp */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.cpp.cpp; name = moc_CommandHandler.cpp; path = /Users/jonathan/OriginSimulator/moc_CommandHandler.cpp; sourceTree = "<absolute>"; };
 		B8EAC66C1EC71ACAA9D54AE0 /* CelestronOriginSimulator.cpp */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.cpp.cpp; name = CelestronOriginSimulator.cpp; path = /Users/jonathan/OriginSimulator/CelestronOriginSimulator.cpp; sourceTree = "<absolute>"; };
 		C1268A779C1AF28380600561 /* CommandHandler.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; name = CommandHandler.h; path = /Users/jonathan/OriginSimulator/CommandHandler.h; sourceTree = "<absolute>"; };
@@ -143,6 +155,12 @@
 		2EB56BE3C2D93CDAB0C52E67 /* Sources */ = {
 			isa = PBXGroup;
 			children = (
+				AB19AC682E0BFE5100E961DC /* pointing.cc */,
+				AB19AC662E0BFE1300E961DC /* string_utils.cc */,
+				AB19AC642E0BFDD100E961DC /* healpix_tables.cc */,
+				AB19AC622E0BFD5B00E961DC /* geom_utils.cc */,
+				AB19AC602E0BFD0A00E961DC /* healpix_base.cc */,
+				AB19AC5E2E0BFCAB00E961DC /* error_handling.cc */,
 				AB19AC5B2E0ACB5F00E961DC /* RubinHipsClient.h */,
 				AB19AC5C2E0ACB5F00E961DC /* RubinHipsClient.cpp */,
 				8C3DD443A424810F9B333D6D /* main.cpp */,
@@ -324,12 +342,18 @@
 			isa = PBXSourcesBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
+				AB19AC612E0BFD0A00E961DC /* healpix_base.cc in Compile Sources */,
+				AB19AC692E0BFE5100E961DC /* pointing.cc in Compile Sources */,
+				AB19AC632E0BFD5B00E961DC /* geom_utils.cc in Compile Sources */,
+				AB19AC652E0BFDD100E961DC /* healpix_tables.cc in Compile Sources */,
 				FC87C2AC63C56746CD421304 /* main.cpp in Compile Sources */,
 				58AE7578ACAE7CDEDEB17BAB /* CelestronOriginSimulator.cpp in Compile Sources */,
 				368945FF52BDF1EF9B0EA44E /* WebsocketConnection.cpp in Compile Sources */,
+				AB19AC5F2E0BFCAB00E961DC /* error_handling.cc in Compile Sources */,
 				FD2642A263593461BB29D490 /* CommandHandler.cpp in Compile Sources */,
 				029C6E44DA83FDB92BC6474D /* StatusSender.cpp in Compile Sources */,
 				B69C44C810DF52361AD5F1C2 /* moc_CelestronOriginSimulator.cpp in Compile Sources */,
+				AB19AC672E0BFE1300E961DC /* string_utils.cc in Compile Sources */,
 				DEDF403CE0FBFF730493A3F2 /* moc_WebsocketConnection.cpp in Compile Sources */,
 				832C5DE24B75C97913893DBB /* moc_CommandHandler.cpp in Compile Sources */,
 				04509D3AC7500B172EEAD0BA /* moc_StatusSender.cpp in Compile Sources */,
@@ -520,6 +544,21 @@
 				COPY_PHASE_STRIP = NO;
 				DEVELOPMENT_TEAM = Y53675G8V9;
 				ENABLE_BITCODE = NO;
+				HEADER_SEARCH_PATHS = (
+					.,
+					/opt/homebrew/lib/QtWidgets.framework/Headers,
+					/opt/homebrew/lib/QtGui.framework/Headers,
+					/opt/homebrew/lib/QtNetwork.framework/Headers,
+					/opt/homebrew/lib/QtCore.framework/Headers,
+					/Users/jonathan/OriginSimulator/healpixmirror/src/cxx/cxxsupport,
+					/Users/jonathan/OriginSimulator/healpixmirror/src/cxx/Healpix_cxx,
+					.,
+					/Applications/Xcode.app/Contents/Developer/Platforms/MacOSX.platform/Developer/SDKs/MacOSX15.5.sdk/System/Library/Frameworks/OpenGL.framework/Headers,
+					/Applications/Xcode.app/Contents/Developer/Platforms/MacOSX.platform/Developer/SDKs/MacOSX15.5.sdk/System/Library/Frameworks/AGL.framework/Headers,
+					/Applications/Xcode.app/Contents/Developer/Platforms/MacOSX.platform/Developer/SDKs/MacOSX15.5.sdk/System/Library/Frameworks/OpenGL.framework/Headers,
+					/Applications/Xcode.app/Contents/Developer/Platforms/MacOSX.platform/Developer/SDKs/MacOSX15.5.sdk/System/Library/Frameworks/AGL.framework/Headers,
+					"/opt/homebrew/Cellar/qt/6.9.0/share/qt/mkspecs/macx-clang",
+				);
 				MACOSX_DEPLOYMENT_TARGET = 15.0;
 				PRODUCT_BUNDLE_IDENTIFIER = "uk.kimmitt.${PRODUCT_NAME:rfc1034identifier}";
 				PRODUCT_NAME = OriginSimulator;
@@ -540,6 +579,21 @@
 				DEVELOPMENT_TEAM = Y53675G8V9;
 				ENABLE_BITCODE = NO;
 				GCC_OPTIMIZATION_LEVEL = 0;
+				HEADER_SEARCH_PATHS = (
+					.,
+					/opt/homebrew/lib/QtWidgets.framework/Headers,
+					/opt/homebrew/lib/QtGui.framework/Headers,
+					/opt/homebrew/lib/QtNetwork.framework/Headers,
+					/opt/homebrew/lib/QtCore.framework/Headers,
+					/Users/jonathan/OriginSimulator/healpixmirror/src/cxx/cxxsupport,
+					/Users/jonathan/OriginSimulator/healpixmirror/src/cxx/Healpix_cxx,
+					.,
+					/Applications/Xcode.app/Contents/Developer/Platforms/MacOSX.platform/Developer/SDKs/MacOSX15.5.sdk/System/Library/Frameworks/OpenGL.framework/Headers,
+					/Applications/Xcode.app/Contents/Developer/Platforms/MacOSX.platform/Developer/SDKs/MacOSX15.5.sdk/System/Library/Frameworks/AGL.framework/Headers,
+					/Applications/Xcode.app/Contents/Developer/Platforms/MacOSX.platform/Developer/SDKs/MacOSX15.5.sdk/System/Library/Frameworks/OpenGL.framework/Headers,
+					/Applications/Xcode.app/Contents/Developer/Platforms/MacOSX.platform/Developer/SDKs/MacOSX15.5.sdk/System/Library/Frameworks/AGL.framework/Headers,
+					"/opt/homebrew/Cellar/qt/6.9.0/share/qt/mkspecs/macx-clang",
+				);
 				MACOSX_DEPLOYMENT_TARGET = 15.0;
 				ONLY_ACTIVE_ARCH = YES;
 				PRODUCT_BUNDLE_IDENTIFIER = "uk.kimmitt.${PRODUCT_NAME:rfc1034identifier}";
