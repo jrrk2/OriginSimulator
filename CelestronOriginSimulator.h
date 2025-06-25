@@ -21,6 +21,8 @@ const int SERVER_PORT = 80;
 const int BROADCAST_PORT = 55555;
 const int BROADCAST_INTERVAL = 5000; // milliseconds
 
+#define qrand rand
+
 class CelestronOriginSimulator : public QObject {
     Q_OBJECT
     
@@ -68,6 +70,8 @@ private:
     // Add initialization timer
     QTimer *m_initTimer;
     int m_initUpdateCount = 0;  // Add this to track initialization progress
+
+    int broadcast_id = qrand() % 90 + 10;
   
     // Add initialization methods
     void setupInitialization();

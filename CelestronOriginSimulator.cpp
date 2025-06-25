@@ -11,7 +11,6 @@
 #include <QDebug>
 #include <QPainter>
 #include <cmath>
-#define qrand rand
 
 CelestronOriginSimulator::CelestronOriginSimulator(QObject *parent) : QObject(parent) {
     // Initialize core components
@@ -630,7 +629,7 @@ void CelestronOriginSimulator::onWebSocketDisconnected() {
 
 void CelestronOriginSimulator::sendBroadcast() {
     // Prepare the broadcast message
-  QString message = QString("Identity:Origin-") + QLatin1String (std::to_string(qrand() % 100)) + QString("Z Origin IP Address = %1");
+  QString message = QString("Identity:Origin-") + QLatin1String (std::to_string(broadcast_id)) + QString("Z Origin IP Address = %1");
     
     // Get our IP addresses
     QList<QHostAddress> ipAddresses = QNetworkInterface::allAddresses();
