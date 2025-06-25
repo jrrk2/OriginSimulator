@@ -16,8 +16,8 @@ public:
     QString chargerStatus = "CHARGING";
     QDateTime dateTime = QDateTime::currentDateTime();
     QString timeZone = "Europe/London";
-    double latitude = 0.911850314340732;   // Exact from real data
-    double longitude = 0.0013913674920166123; // Exact from real data
+    double latitude = -0.5847;   // Cerro Observatory
+    double longitude = 1.23; 
     bool isAligned = true;  // Real telescope shows aligned
     bool isGotoOver = true;
     bool isTracking = false;
@@ -61,8 +61,8 @@ public:
     // Image data (real values from session1.pcapng with realistic progression)
     QString fileLocation = "Images/Temp/0.jpg";
     QString imageType = "LIVE";
-    double dec = 1.4336279496820648;     // Real Dec from capture
-    double ra = 3.8422300000000074;      // Will be calculated based on time
+    double dec = 0;     // Real Dec from capture
+    double ra = 0;      // Will be calculated based on time
     double orientation = 3.120206959973186; // Real orientation
     double fovX = 0.021893731343283578;  // Real FOV
     double fovY = 0.014672238805970147;  // Real FOV
@@ -116,8 +116,8 @@ public:
     int currentSequenceId = 16816;  // Start with real sequence ID from capture
     
     // Realistic progression variables
-    double baseRA = 1.4336279496820648;
-    double baseDec = 1.4336279496820648;
+    double baseRA = 186.15 * M_PI / 180.0;
+    double baseDec = 8.0 * M_PI / 180.0;
     double startTime = 0.0;
 
     // Initialization state

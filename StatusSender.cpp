@@ -165,6 +165,7 @@ void StatusSender::sendNewImageReady(WebSocketConnection *specificClient) {
     QJsonObject newImage;
     newImage["Command"] = "NewImageReady";
     newImage["Destination"] = "All";
+    newImage["Ra"] = m_telescopeState->ra;
     newImage["Dec"] = m_telescopeState->dec;
     newImage["FovX"] = m_telescopeState->fovX;
     newImage["FovY"] = m_telescopeState->fovY;

@@ -84,6 +84,11 @@ void CelestronOriginSimulator::setupRubinIntegration() {
         
         qDebug() << "Rubin Observatory integration initialized";
 //     qDebug() << "Rubin images will be saved to:" << rubinDir;
+
+    m_telescopeState->ra = m_telescopeState->baseRA;
+    m_telescopeState->dec = m_telescopeState->baseDec;
+
+	m_rubinClient->fetchTilesForCurrentPointing(m_telescopeState);
 }
 
 // Add these new slot methods to CelestronOriginSimulator.cpp:
@@ -661,8 +666,10 @@ void CelestronOriginSimulator::updateSlew() {
         // Slew complete
         m_telescopeState->isGotoOver = true;
         m_telescopeState->isSlewing = false;
-        m_telescopeState->ra = m_telescopeState->targetRa;
-        m_telescopeState->dec = m_telescopeState->targetDec;
+        m_telescopeState->baseRA = m_telescopeState->targetRa;
+        m_telescopeState->baseDec = m_telescopeState->targetDec;
+        m_telescopeState->ra = m_telescopeState->baseRA;
+        m_telescopeState->dec = m_telescopeState->baseDec;
         
         // Stop the timer
         m_slewTimer->stop();
