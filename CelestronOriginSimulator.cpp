@@ -670,17 +670,6 @@ void CelestronOriginSimulator::updateSlew() {
         m_rubinClient->fetchTilesForCurrentPointing(&tempState);
 	    }
 	});
-
-        // TRIGGER RUBIN FETCH FOR NEW POSITION
-        if (m_rubinClient) {
-        qDebug() << "🎯 Slew complete - fetching Rubin Observatory data for new position";
-            // Use target coordinates directly to avoid race condition
-        TelescopeState tempState = *m_telescopeState;
-        tempState.ra = m_telescopeState->targetRa;
-        tempState.dec = m_telescopeState->targetDec;
-        qDebug() << "🎯 Using target coordinates for Rubin fetch - RA:" << tempState.ra << "Dec:" << tempState.dec;
-        m_rubinClient->fetchTilesForCurrentPointing(&tempState);
-        }
         
         qDebug() << "🎯 Slew complete";
     }

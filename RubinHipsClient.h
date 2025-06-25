@@ -103,6 +103,14 @@ struct SurveyInfo {
     bool available;
 };
 
+// Add this to track tile positions
+struct TileInfo {
+    std::shared_ptr<HipsTile> tile;
+    int gridX, gridY;
+    QString filename;
+    bool loaded;
+};
+
 class RubinHipsClient : public QObject {
     // REMOVED Q_OBJECT macro to avoid MOC issues
     
@@ -144,6 +152,7 @@ private:
     void fetchSingleTile(std::shared_ptr<HipsTile> tile, const QString& survey_name);
     void processFetchedTile(std::shared_ptr<HipsTile> tile, const QString& survey_name);
     void generateSyntheticImage(double ra_deg, double dec_deg);
+    QMap<QString, TileInfo> m_tileMap; // Track tiles by their unique ID
   
     // URL and image handling
     QString buildTileUrl(const HipsTile* tile, const QString& survey_name, const QString& format = "webp") const;

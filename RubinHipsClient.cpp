@@ -925,26 +925,22 @@ bool RubinHipsClient::startTileDownload(const std::vector<TileJob>& jobs,
 
     for (const auto& job : jobs) {
         QNetworkRequest request(QUrl(job.url));
-        // Add proper headers matching the working browser request
         request.setHeader(QNetworkRequest::UserAgentHeader, 
-            "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/18.5 Safari/605.1.15");
-        request.setRawHeader("Accept", "image/webp,image/avif,image/jxl,image/heic,image/heic-sequence,video/*;q=0.8,image/png,image/svg+xml,image/*;q=0.8,*/*;q=0.5");
-        request.setRawHeader("Accept-Encoding", "gzip, deflate, br");
-        request.setRawHeader("Accept-Language", "en-GB,en;q=0.9");
-        request.setRawHeader("Sec-Fetch-Dest", "image");
-        request.setRawHeader("Sec-Fetch-Mode", "cors");
-        request.setRawHeader("Sec-Fetch-Site", "cross-site");
+            "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/605.1.15");
+        request.setRawHeader("Accept", "image/webp,image/*,*/*");
         
         QNetworkReply *reply = manager->get(request);
 
+        // CRITICAL FIX: Capture job by VALUE, not reference
         connect(reply, &QNetworkReply::finished, this, 
-                [=, &job](){ handleTileReply(reply, job, mosaic, completed, successful, 
-                                           totalJobs, surveyName, tileSize); });
+                [=, jobCopy = job](){ // COPY the job into the lambda
+                    handleTileReply(reply, jobCopy, mosaic, completed, successful, 
+                                   totalJobs, surveyName, tileSize); 
+                });
     }
 
     return true;
 }
-
 
 void RubinHipsClient::addSurveyOverlay(QImage& image, const QString& surveyName, 
                                        int successful, int total) {
@@ -971,70 +967,53 @@ void RubinHipsClient::addSurveyOverlay(QImage& image, const QString& surveyName,
     painter.end();
 }
 // Enhanced RubinHipsClient.cpp with detailed debugging and URL generation fixes
-
 void RubinHipsClient::handleTileReply(QNetworkReply* reply, const TileJob& job, 
                                       QImage* mosaic, int* completed, int* successful,
                                       int totalJobs, const QString& surveyName, int tileSize) {
     
     (*completed)++;
     
-    // ENHANCED DEBUGGING
-    qDebug() << "=== Tile Reply Debug ===";
-    qDebug() << "URL:" << reply->request().url().toString();
-    qDebug() << "HTTP Status:" << reply->attribute(QNetworkRequest::HttpStatusCodeAttribute).toInt();
-    qDebug() << "Error:" << reply->error() << reply->errorString();
-    qDebug() << "Content-Type:" << reply->header(QNetworkRequest::ContentTypeHeader).toString();
+    // VALIDATE GRID COORDINATES FIRST
+    if (job.tileX < 0 || job.tileX >= 6 || job.tileY < 0 || job.tileY >= 4) {
+        qDebug() << "❌ INVALID GRID COORDINATES for pixel" << job.pix 
+                 << "- Grid[" << job.tileX << "," << job.tileY << "] is out of bounds!";
+        reply->deleteLater();
+        return;
+    }
     
     if (reply->error() == QNetworkReply::NoError) {
         QByteArray data = reply->readAll();
         qDebug() << "Data size:" << data.size() << "bytes";
-        qDebug() << "Data starts with:" << data.left(16).toHex();
         
         if (data.size() > 0) {
             QImage tile;
             
-            // Try to load the image data
             if (tile.loadFromData(data)) {
                 qDebug() << "✓ Image decoded successfully - size:" << tile.size();
                 
-                QPainter painter(mosaic);
-                int x = job.tileX * tileSize;
-                int y = job.tileY * tileSize;
-                QImage scaledTile = tile.scaled(tileSize, tileSize, 
-                                               Qt::KeepAspectRatio, 
-                                               Qt::SmoothTransformation);
-                painter.drawImage(x, y, scaledTile);
-                painter.end();
+                // Calculate canvas position using VALIDATED coordinates
+                int x = job.tileX * tileSize;  // Should be 0, 512, 1024, 1536, 2048, or 2560
+                int y = job.tileY * tileSize;  // Should be 0, 512, 1024, or 1536
                 
-                (*successful)++;
-                qDebug() << "✓ Loaded tile" << job.pix << "from" << surveyName << "at position [" << job.tileX << "," << job.tileY << "]";
-            } else {
-                qDebug() << "✗ Failed to decode image data for tile" << job.pix;
-                qDebug() << "  Data preview:" << data.left(64);
-                
-                // Try saving raw data to debug
-                QString debugPath = m_imageDirectory + QString("/debug_tile_%1.webp").arg(job.pix);
-                QFile debugFile(debugPath);
-                if (debugFile.open(QIODevice::WriteOnly)) {
-                    debugFile.write(data);
-                    debugFile.close();
-                    qDebug() << "  Saved raw data to:" << debugPath;
+                // ADDITIONAL BOUNDS CHECK
+                if (x >= 0 && x < mosaic->width() && y >= 0 && y < mosaic->height()) {
+                    QPainter painter(mosaic);
+                    QImage scaledTile = tile.scaled(tileSize, tileSize, 
+                                                   Qt::KeepAspectRatio, 
+                                                   Qt::SmoothTransformation);
+                    painter.drawImage(x, y, scaledTile);
+                    painter.end();
+                    
+                    (*successful)++;
+                    qDebug() << "✓ Loaded tile" << job.pix << "at valid position [" 
+                             << job.tileX << "," << job.tileY << "] -> (" << x << "," << y << ")";
+                } else {
+                    qDebug() << "❌ Canvas position out of bounds: (" << x << "," << y << ")";
                 }
             }
-        } else {
-            qDebug() << "✗ Empty response for tile" << job.pix;
-        }
-    } else {
-        int httpStatus = reply->attribute(QNetworkRequest::HttpStatusCodeAttribute).toInt();
-        qDebug() << "✗ Network error for tile" << job.pix << "- HTTP" << httpStatus << ":" << reply->errorString();
-        
-        // Read error response body
-        QByteArray errorData = reply->readAll();
-        if (!errorData.isEmpty()) {
-            qDebug() << "  Error response:" << QString::fromUtf8(errorData.left(200));
         }
     }
-
+    
     reply->deleteLater();
 
     qDebug() << "Progress:" << *completed << "/" << totalJobs 
@@ -1046,16 +1025,11 @@ void RubinHipsClient::handleTileReply(QNetworkReply* reply, const TileJob& job,
                         .arg(surveyName).arg(*successful).arg(totalJobs);
         qDebug() << result;
         
-        // Save the mosaic regardless of success rate
+        // Save the mosaic
         QString finalPath = m_imageDirectory + QString("/mosaic_%1.jpg").arg(surveyName);
         
         if (mosaic->save(finalPath, "JPG", 90)) {
             qDebug() << "✓ Saved mosaic to" << finalPath;
-            
-            // Add survey info overlay
-            addSurveyOverlay(*mosaic, surveyName, *successful, totalJobs);
-            mosaic->save(finalPath, "JPG", 90);
-            
             if (onImageReady) onImageReady(finalPath);
         }
         
