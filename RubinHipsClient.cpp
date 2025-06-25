@@ -51,8 +51,8 @@ void SkyCoordinates::validateAndNormalize() {
 
 void SkyCoordinates::validateRubinCoverage() {
     // Virgo Cluster region (where we know data exists)
-    bool in_virgo_region = (ra_deg >= 180.0 && ra_deg <= 195.0 && dec_deg >= 5.0 && dec_deg <= 20.0);
-    qDebug() << "Virgo coverage check - RA:" << ra_deg << "in [180,195]?" << (ra_deg >= 180.0 && ra_deg <= 195.0);
+    bool in_virgo_region = (ra_deg >= 180.0 && ra_deg <= 195.1 && dec_deg >= 5.0 && dec_deg <= 20.0);
+    qDebug() << "Virgo coverage check - RA:" << ra_deg << "in [180,195.1]?" << (ra_deg >= 180.0 && ra_deg <= 195.1);
     qDebug() << "Virgo coverage check - Dec:" << dec_deg << "in [5,20]?" << (dec_deg >= 5.0 && dec_deg <= 20.0);
     qDebug() << "Final Virgo coverage result:" << in_virgo_region;
     
@@ -75,7 +75,7 @@ QString SkyCoordinates::toString() const {
 }
 
 bool SkyCoordinates::isInKnownCoverage() const {
-    bool result = (ra_deg >= 180.0 && ra_deg <= 195.0 && dec_deg >= 5.0 && dec_deg <= 20.0);
+    bool result = (ra_deg >= 180.0 && ra_deg <= 195.1 && dec_deg >= 5.0 && dec_deg <= 20.0);
     qDebug() << "isInKnownCoverage() called with RA:" << ra_deg << "Dec:" << dec_deg << "Result:" << result;
     return result;
 }
