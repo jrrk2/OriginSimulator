@@ -7,6 +7,7 @@
 #include <QNetworkReply>
 #include <QTimer>
 #include <QMap>
+#include <QMutex>
 #include <QDir>
 #include <QDateTime>
 #include <QList>
@@ -141,8 +142,47 @@ public:
     void handleNetworkReply(QNetworkReply* reply);
     void onFetchTimeout();
     void initializeConnections();
+
+    // New cache management methods
+    void setCacheEnabled(bool enabled) { m_cacheEnabled = enabled; }
+    void setCacheMaxSize(qint64 maxSizeBytes) { m_cacheMaxSize = maxSizeBytes; }
+    void clearCache();
+    QString getCacheStats() const;
+    
+    // Live view integration
+    QString generateLiveViewWithRubin(const SkyCoordinates& coords, const QString& surveyName);
+    void overlayRubinOnLiveView(const QString& liveViewPath, const QString& rubinMosaicPath, const QString& outputPath);
   
 private:
+    // Cache system
+    struct CachedTile {
+        QByteArray data;
+        QDateTime cacheTime;
+        qint64 accessCount;
+        QString contentType;
+        
+        bool isValid() const { 
+            return !data.isEmpty() && cacheTime.secsTo(QDateTime::currentDateTime()) < 3600; // 1 hour cache
+        }
+    };
+    
+    bool m_cacheEnabled = true;
+    qint64 m_cacheMaxSize = 100 * 1024 * 1024; // 100MB default
+    qint64 m_currentCacheSize = 0;
+    QMap<QString, CachedTile> m_tileCache; // URL -> cached tile
+    mutable QMutex m_cacheMutex;
+    
+    // Cache management methods
+    QString getCacheKey(const QString& url) const;
+    bool getTileFromCache(const QString& url, QByteArray& data, QString& contentType);
+    void storeTileInCache(const QString& url, const QByteArray& data, const QString& contentType);
+    void evictOldestTiles();
+    void cleanupExpiredTiles();
+    
+    // Live view integration
+    QString m_currentMosaicPath;
+    bool m_enableLiveViewIntegration = true;
+
     // Core methods
     void initializeSurveys();
     void initializeImageDirectory();
@@ -153,7 +193,11 @@ private:
     void processFetchedTile(std::shared_ptr<HipsTile> tile, const QString& survey_name);
     void generateSyntheticImage(double ra_deg, double dec_deg);
     QMap<QString, TileInfo> m_tileMap; // Track tiles by their unique ID
-  
+  void createLiveViewWithRubin(const QString& rubinMosaicPath, const QString& surveyName);
+  void handleTileReplyWithProperties(QNetworkReply* reply, QImage* mosaic, 
+				     int* completed, int* successful,
+				     int totalJobs, const QString& surveyName, int tileSize);
+
     // URL and image handling
     QString buildTileUrl(const HipsTile* tile, const QString& survey_name, const QString& format = "webp") const;
     QString generateRealisticImage(const SkyCoordinates& coords, const QString& survey_name);
@@ -169,7 +213,7 @@ private:
                         const QString& surveyName, int tileSize);
     void addSurveyOverlay(QImage& image, const QString& surveyName, 
                          int successful, int total);
-    
+    void finalizeMosaic(QImage* mosaic, int *completed, int *successful, int totalJobs, const QString& surveyName, int cacheHits);
     // Member variables
     QNetworkAccessManager* m_networkManager;
     QTimer* m_timeoutTimer;
@@ -186,6 +230,7 @@ private:
     int m_activeFetches;
     int m_totalFetches;
     int m_completedFetches;
+    bool m_fetchInProgress;
     qint64 m_totalBytesDownloaded;
 };
 

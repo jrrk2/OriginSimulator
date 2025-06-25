@@ -763,8 +763,12 @@ void RubinHipsClient::compositeLiveViewImage() {
     if (composite.save(outputFile, "JPEG", 95)) {
         qDebug() << "✅ 6x4 HiPS composite saved:" << outputFile;
         // Also save as current live view
-        composite.save(tempDir + "/98.jpg", "JPEG", 95);
-        if (onImageReady) onImageReady(tempDir + "/98.jpg");
+        for (int i = 0; i < 10; i++)
+	  {
+	    QString npth = tempDir + "/" + QLatin1String (std::to_string(i)) + ".jpg";
+	    composite.save(npth, "JPEG", 95);
+	    if (onImageReady) onImageReady(npth);
+	  }
     }
 }
 
@@ -909,40 +913,7 @@ QString RubinHipsClient::buildTileUrlForSurvey(const QString& surveyName, int or
     return QString();
 }
 
-bool RubinHipsClient::startTileDownload(const std::vector<TileJob>& jobs, 
-                                        const QString& surveyName,
-                                        int tileSize, int width, int height) {
-    
-    QImage* mosaic = new QImage(tileSize * width, tileSize * height, QImage::Format_RGB888);
-    mosaic->fill(Qt::black);
-
-    auto manager = new QNetworkAccessManager(this);
-    int* completed = new int(0);
-    int* successful = new int(0);
-    int totalJobs = jobs.size();
-
-    qDebug() << "Starting download of" << totalJobs << "tiles from" << surveyName;
-
-    for (const auto& job : jobs) {
-        QNetworkRequest request(QUrl(job.url));
-        request.setHeader(QNetworkRequest::UserAgentHeader, 
-            "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/605.1.15");
-        request.setRawHeader("Accept", "image/webp,image/*,*/*");
-        
-        QNetworkReply *reply = manager->get(request);
-
-        // CRITICAL FIX: Capture job by VALUE, not reference
-        connect(reply, &QNetworkReply::finished, this, 
-                [=, jobCopy = job](){ // COPY the job into the lambda
-                    handleTileReply(reply, jobCopy, mosaic, completed, successful, 
-                                   totalJobs, surveyName, tileSize); 
-                });
-    }
-
-    return true;
-}
-
-void RubinHipsClient::addSurveyOverlay(QImage& image, const QString& surveyName, 
+void RubinHipsClient::addSurveyOverlay(QImage& image, const QString& surveyName,
                                        int successful, int total) {
     QPainter painter(&image);
     painter.setRenderHint(QPainter::Antialiasing);
@@ -966,6 +937,7 @@ void RubinHipsClient::addSurveyOverlay(QImage& image, const QString& surveyName,
     
     painter.end();
 }
+
 // Enhanced RubinHipsClient.cpp with detailed debugging and URL generation fixes
 void RubinHipsClient::handleTileReply(QNetworkReply* reply, const TileJob& job, 
                                       QImage* mosaic, int* completed, int* successful,
@@ -1197,3 +1169,411 @@ void RubinHipsClient::compareURLGeneration(TelescopeState *state) {
         qDebug() << "Error in URL comparison:" << e.what();
     }
 }
+// RubinHipsClient.cpp - Cache Implementation
+
+QString RubinHipsClient::getCacheKey(const QString& url) const {
+    // Create a shorter, filesystem-safe cache key
+    QCryptographicHash hash(QCryptographicHash::Md5);
+    hash.addData(url.toUtf8());
+    return hash.result().toHex();
+}
+
+bool RubinHipsClient::getTileFromCache(const QString& url, QByteArray& data, QString& contentType) {
+    if (!m_cacheEnabled) return false;
+    
+    QMutexLocker locker(&m_cacheMutex);
+    QString key = getCacheKey(url);
+    
+    if (!m_tileCache.contains(key)) return false;
+    
+    CachedTile& tile = m_tileCache[key];
+    if (!tile.isValid()) {
+        // Remove expired tile
+        m_currentCacheSize -= tile.data.size();
+        m_tileCache.remove(key);
+        return false;
+    }
+    
+    // Update access stats
+    tile.accessCount++;
+    data = tile.data;
+    contentType = tile.contentType;
+    
+    qDebug() << "✓ Cache HIT for" << url.split("/").last() << "(" << data.size() << "bytes)";
+    return true;
+}
+
+void RubinHipsClient::storeTileInCache(const QString& url, const QByteArray& data, const QString& contentType) {
+    if (!m_cacheEnabled || data.isEmpty()) return;
+    
+    QMutexLocker locker(&m_cacheMutex);
+    QString key = getCacheKey(url);
+    
+    // Check if we need to make space
+    while (m_currentCacheSize + data.size() > m_cacheMaxSize && !m_tileCache.isEmpty()) {
+        evictOldestTiles();
+    }
+    
+    // Store tile
+    CachedTile tile;
+    tile.data = data;
+    tile.cacheTime = QDateTime::currentDateTime();
+    tile.accessCount = 1;
+    tile.contentType = contentType;
+    
+    // Remove old version if exists
+    if (m_tileCache.contains(key)) {
+        m_currentCacheSize -= m_tileCache[key].data.size();
+    }
+    
+    m_tileCache[key] = tile;
+    m_currentCacheSize += data.size();
+    
+    qDebug() << "💾 Cached tile" << url.split("/").last() << "(" << data.size() << "bytes)"
+             << "Cache:" << (m_currentCacheSize / 1024) << "KB";
+}
+
+void RubinHipsClient::evictOldestTiles() {
+    if (m_tileCache.isEmpty()) return;
+    
+    // Find oldest tile by cache time
+    QString oldestKey;
+    QDateTime oldestTime = QDateTime::currentDateTime();
+    
+    for (auto it = m_tileCache.begin(); it != m_tileCache.end(); ++it) {
+        if (it.value().cacheTime < oldestTime) {
+            oldestTime = it.value().cacheTime;
+            oldestKey = it.key();
+        }
+    }
+    
+    if (!oldestKey.isEmpty()) {
+        m_currentCacheSize -= m_tileCache[oldestKey].data.size();
+        m_tileCache.remove(oldestKey);
+        qDebug() << "🗑️ Evicted oldest cached tile, cache size:" << (m_currentCacheSize / 1024) << "KB";
+    }
+}
+
+void RubinHipsClient::clearCache() {
+    QMutexLocker locker(&m_cacheMutex);
+    m_tileCache.clear();
+    m_currentCacheSize = 0;
+    qDebug() << "🧹 Cache cleared";
+}
+
+QString RubinHipsClient::getCacheStats() const {
+    QMutexLocker locker(&m_cacheMutex);
+    return QString("Cache: %1 tiles, %2 KB, %3% full")
+           .arg(m_tileCache.size())
+           .arg(m_currentCacheSize / 1024)
+           .arg((m_currentCacheSize * 100) / m_cacheMaxSize);
+}
+
+// Modified handleTileReplyWithProperties to use cache
+void RubinHipsClient::handleTileReplyWithProperties(QNetworkReply* reply, QImage* mosaic, 
+                                                   int* completed, int* successful,
+                                                   int totalJobs, const QString& surveyName, int tileSize) {
+    
+    (*completed)++;
+    
+    // Reconstruct job from properties
+    TileJob job;
+    job.pix = reply->property("jobPixel").toInt();
+    job.tileX = reply->property("jobTileX").toInt();
+    job.tileY = reply->property("jobTileY").toInt();
+    job.url = reply->property("jobUrl").toString();
+    
+    qDebug() << "=== Tile Reply Debug ===";
+    qDebug() << "URL:" << reply->request().url().toString();
+    qDebug() << "Pixel:" << job.pix;
+    qDebug() << "Grid position: [" << job.tileX << "," << job.tileY << "]";
+    
+    // Validate coordinates
+    if (job.tileX < 0 || job.tileX >= 6 || job.tileY < 0 || job.tileY >= 4) {
+        qDebug() << "❌ INVALID GRID COORDINATES for pixel" << job.pix 
+                 << "- Grid[" << job.tileX << "," << job.tileY << "] is out of bounds!";
+        reply->deleteLater();
+        return;
+    }
+    
+    if (reply->error() == QNetworkReply::NoError) {
+        QByteArray data = reply->readAll();
+        QString contentType = reply->header(QNetworkRequest::ContentTypeHeader).toString();
+        
+        if (data.size() > 0) {
+            // Store in cache for future use
+            storeTileInCache(job.url, data, contentType);
+            
+            QImage tile;
+            if (tile.loadFromData(data)) {
+                qDebug() << "✓ Image decoded successfully - size:" << tile.size();
+                
+                // Apply edge blending for seamless mosaic
+                int x = job.tileX * tileSize;
+                int y = job.tileY * tileSize;
+                
+                // Small overlap to hide seams
+                if (job.tileX > 0) x -= 2;
+                if (job.tileY > 0) y -= 2;
+                
+                QPainter painter(mosaic);
+                painter.setCompositionMode(QPainter::CompositionMode_SourceOver);
+                painter.setRenderHint(QPainter::SmoothPixmapTransform, true);
+                
+                QImage scaledTile = tile.scaled(tileSize + 2, tileSize + 2, 
+                                               Qt::KeepAspectRatio, 
+                                               Qt::SmoothTransformation);
+                
+                painter.drawImage(x, y, scaledTile);
+                painter.end();
+                
+                (*successful)++;
+                qDebug() << "✓ Loaded tile" << job.pix << "at blended position [" 
+                         << job.tileX << "," << job.tileY << "] -> (" << x << "," << y << ")";
+            }
+        }
+    }
+    
+    reply->deleteLater();
+    qDebug() << "Progress:" << *completed << "/" << totalJobs << "completed," << *successful << "successful";
+
+    // When all tiles are processed
+    if (*completed == totalJobs) {
+        QString result = QString("Completed %1 with %2/%3 successful tiles")
+                        .arg(surveyName).arg(*successful).arg(totalJobs);
+        qDebug() << result;
+        
+        // Save the mosaic
+        QString finalPath = m_imageDirectory + QString("/mosaic_%1.jpg").arg(surveyName);
+        
+        if (mosaic->save(finalPath, "JPG", 95)) {
+            qDebug() << "✓ Saved seamless mosaic to" << finalPath;
+            qDebug() << getCacheStats();
+            
+            // Store current mosaic path for live view integration
+            m_currentMosaicPath = finalPath;
+            
+            // Create live view integration if enabled
+            if (m_enableLiveViewIntegration) {
+                createLiveViewWithRubin(finalPath, surveyName);
+            }
+            
+            if (onImageReady) onImageReady(finalPath);
+        }
+        
+        // Reset fetch flag
+        m_fetchInProgress = false;
+        
+        // Clean up
+        delete mosaic;
+        delete completed;
+        delete successful;
+    }
+}
+
+// Modified startTileDownload to check cache first
+bool RubinHipsClient::startTileDownload(const std::vector<TileJob>& jobs, 
+                                        const QString& surveyName,
+                                        int tileSize, int width, int height) {
+    
+    QImage* mosaic = new QImage(tileSize * width + 4, tileSize * height + 4, QImage::Format_RGB888);
+    mosaic->fill(Qt::black);
+
+    auto manager = new QNetworkAccessManager(this);
+    int* completed = new int(0);
+    int* successful = new int(0);
+    int totalJobs = jobs.size();
+    int cacheHits = 0;
+
+    qDebug() << "Starting download of" << totalJobs << "tiles from" << surveyName;
+
+    for (const auto& job : jobs) {
+        // Check cache first
+        QByteArray cachedData;
+        QString contentType;
+        
+        if (getTileFromCache(job.url, cachedData, contentType)) {
+            // Process cached tile immediately
+            cacheHits++;
+            (*completed)++;
+            
+            QImage tile;
+            if (tile.loadFromData(cachedData)) {
+                // Apply same blending logic as network tiles
+                int x = job.tileX * tileSize;
+                int y = job.tileY * tileSize;
+                
+                if (job.tileX > 0) x -= 2;
+                if (job.tileY > 0) y -= 2;
+                
+                QPainter painter(mosaic);
+                painter.setCompositionMode(QPainter::CompositionMode_SourceOver);
+                painter.setRenderHint(QPainter::SmoothPixmapTransform, true);
+                
+                QImage scaledTile = tile.scaled(tileSize + 2, tileSize + 2, 
+                                               Qt::KeepAspectRatio, 
+                                               Qt::SmoothTransformation);
+                
+                painter.drawImage(x, y, scaledTile);
+                painter.end();
+                
+                (*successful)++;
+                qDebug() << "✓ Loaded CACHED tile" << job.pix << "at position [" 
+                         << job.tileX << "," << job.tileY << "]";
+            }
+            
+            // Check if this was the last tile
+            if (*completed == totalJobs) {
+                QTimer::singleShot(0, this, [=]() {
+                    finalizeMosaic(mosaic, completed, successful, totalJobs, surveyName, cacheHits);
+                });
+            }
+            continue;
+        }
+        
+        // Not in cache, download from network
+        QNetworkRequest request(QUrl(job.url));
+        request.setHeader(QNetworkRequest::UserAgentHeader, 
+            "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/605.1.15");
+        request.setRawHeader("Accept", "image/webp,image/*,*/*");
+        request.setRawHeader("Cache-Control", "max-age=3600"); // Request caching
+        
+        QNetworkReply *reply = manager->get(request);
+        
+        // Store job data as reply properties
+        reply->setProperty("jobPixel", job.pix);
+        reply->setProperty("jobTileX", job.tileX);
+        reply->setProperty("jobTileY", job.tileY);
+        reply->setProperty("jobUrl", job.url);
+
+        connect(reply, &QNetworkReply::finished, this, 
+                [=](){ 
+                    handleTileReplyWithProperties(reply, mosaic, completed, successful, 
+                                                totalJobs, surveyName, tileSize); 
+                });
+    }
+    
+    if (cacheHits > 0) {
+        qDebug() << "🚀 Cache performance:" << cacheHits << "/" << totalJobs 
+                 << "tiles served from cache (" << (cacheHits * 100 / totalJobs) << "%)";
+    }
+
+    return true;
+}
+
+// Live View Integration
+void RubinHipsClient::createLiveViewWithRubin(const QString& rubinMosaicPath, const QString& surveyName) {
+    // Create telescope-style live view with Rubin data overlay
+    QString tempDir = QDir::homePath() + "/Library/Application Support/OriginSimulator/Images/Temp";
+    QDir().mkpath(tempDir);
+    
+    // Load the Rubin mosaic
+    QImage rubinMosaic(rubinMosaicPath);
+    if (rubinMosaic.isNull()) {
+        qDebug() << "Failed to load Rubin mosaic for live view";
+        return;
+    }
+    
+    // Create telescope-style frame (800x600 like real Origin camera)
+    QImage liveView(800, 600, QImage::Format_RGB888);
+    liveView.fill(QColor(5, 5, 15)); // Dark background
+    
+    QPainter painter(&liveView);
+    painter.setRenderHint(QPainter::SmoothPixmapTransform, true);
+    
+    // Scale and center the Rubin mosaic in the live view
+    QImage scaledRubin = rubinMosaic.scaled(760, 560, Qt::KeepAspectRatio, Qt::SmoothTransformation);
+    int x = (liveView.width() - scaledRubin.width()) / 2;
+    int y = (liveView.height() - scaledRubin.height()) / 2;
+    
+    painter.drawImage(x, y, scaledRubin);
+    
+    // Add telescope-style overlay elements
+    painter.setPen(QColor(100, 100, 100, 150));
+    int centerX = liveView.width() / 2;
+    int centerY = liveView.height() / 2;
+    
+    // Crosshairs
+    painter.drawLine(centerX - 20, centerY, centerX + 20, centerY);
+    painter.drawLine(centerX, centerY - 20, centerX, centerY + 20);
+    
+    // Corner markers
+    painter.drawLine(10, 10, 30, 10);
+    painter.drawLine(10, 10, 10, 30);
+    painter.drawLine(liveView.width()-30, 10, liveView.width()-10, 10);
+    painter.drawLine(liveView.width()-10, 10, liveView.width()-10, 30);
+    
+    // Add info overlay
+    painter.setPen(QColor(200, 200, 200, 180));
+    painter.setFont(QFont("Arial", 10));
+    
+    QString timeStr = QDateTime::currentDateTime().toString("yyyy-MM-dd hh:mm:ss");
+    QString infoStr = QString("Rubin Observatory - %1").arg(surveyName);
+    QString coordStr = "RA: 186.15° Dec: 8.0°";
+    
+    painter.drawText(10, liveView.height() - 35, timeStr);
+    painter.drawText(10, liveView.height() - 20, infoStr);
+    painter.drawText(10, liveView.height() - 5, coordStr);
+    
+    // Add frame number and survey info
+    painter.drawText(liveView.width() - 150, 20, "Live: Rubin HiPS");
+    painter.drawText(liveView.width() - 150, 35, QString("Tiles: %1").arg("24/24"));
+    
+    painter.end();
+    
+    // Save as current live view
+    QString liveViewPath = tempDir + "/rubin_live.jpg";
+    if (liveView.save(liveViewPath, "JPEG", 95)) {
+        qDebug() << "✓ Created Rubin live view:" << liveViewPath;
+        
+        // Also save as numbered sequence for telescope compatibility
+        // Also save as current live view
+        for (int i = 0; i < 10; i++)
+	  {
+	    QString npth = tempDir + "/" + QLatin1String (std::to_string(i)) + ".jpg";
+	    liveView.save(npth, "JPEG", 95);
+	  }
+        qDebug() << "✓ Updated telescope live view with Rubin data";
+    }
+}
+
+void RubinHipsClient::finalizeMosaic(QImage* mosaic, int *completed, int *successful, int totalJobs, const QString& surveyName, int tileSize)
+{
+    (*completed)++;
+                
+    qDebug() << "Progress:" << *completed << "/" << totalJobs << "completed," << *successful << "successful";
+
+    // When all tiles are processed
+    if (*completed == totalJobs) {
+        QString result = QString("Completed %1 with %2/%3 successful tiles")
+                        .arg(surveyName).arg(*successful).arg(totalJobs);
+        qDebug() << result;
+        
+        // Save the mosaic
+        QString finalPath = m_imageDirectory + QString("/mosaic_%1.jpg").arg(surveyName);
+        
+        if (mosaic->save(finalPath, "JPG", 95)) {
+            qDebug() << "✓ Saved seamless mosaic to" << finalPath;
+            qDebug() << getCacheStats();
+            
+            // Store current mosaic path for live view integration
+            m_currentMosaicPath = finalPath;
+            
+            // Create live view integration if enabled
+            if (m_enableLiveViewIntegration) {
+                createLiveViewWithRubin(finalPath, surveyName);
+            }
+            
+            if (onImageReady) onImageReady(finalPath);
+        }
+        
+        // Reset fetch flag
+        m_fetchInProgress = false;
+        
+        // Clean up
+        delete mosaic;
+        delete completed;
+        delete successful;
+    }
+}
+

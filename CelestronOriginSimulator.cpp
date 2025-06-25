@@ -35,7 +35,7 @@ CelestronOriginSimulator::CelestronOriginSimulator(QObject *parent) : QObject(pa
         
         // Ensure temp directory exists and create dummy images
         QDir().mkpath("simulator_data/Images/Temp");
-        createDummyImages();
+        // createDummyImages();
         
         // First broadcast immediately
         QTimer::singleShot(100, this, &CelestronOriginSimulator::sendBroadcast);
@@ -99,7 +99,21 @@ void CelestronOriginSimulator::onRubinImageReady(const QString& filename) {
     m_telescopeState->fileLocation = relativePath;
     m_telescopeState->imageType = "RUBIN_HIPS";
     m_telescopeState->sequenceNumber++;
+
+    // NEW: Also create live view integration
+    QString tempDir = QDir::homePath() + "/Library/Application Support/OriginSimulator/Images/Temp";
+    QString liveViewPath = tempDir + "/rubin_live.jpg";
     
+    // Check if Rubin created a live view
+    if (QFile::exists(liveViewPath)) {
+        // Copy Rubin live view to current telescope view
+        QString currentLive = tempDir + QString("/%1.jpg").arg(m_telescopeState->sequenceNumber % 10);
+        QFile::copy(liveViewPath, currentLive);
+        
+        m_telescopeState->fileLocation = QString("Images/Temp/%1.jpg").arg(m_telescopeState->sequenceNumber % 10);
+        m_telescopeState->imageType = "LIVE_RUBIN";
+    }
+        
     // Notify all connected clients about the new image
     m_statusSender->sendNewImageReadyToAll();
     
@@ -438,7 +452,8 @@ void CelestronOriginSimulator::handleHttpImageRequest(QTcpSocket *socket, const 
 
 //     qDebug() << "Extracted filename:" << fileName;
 
-    QString fullPath = QString("/Users/jonathan/OriginSimulator/simulator_data/Images/Temp/%1").arg(fileName);
+    QString fullPath = QString(QDir::homePath() +
+                               "/Library/Application Support/OriginSimulator/Images/Temp/%1").arg(fileName);
 //     qDebug() << "Looking for file at:" << fullPath;
 
     QFile imageFile(fullPath);
@@ -694,7 +709,7 @@ void CelestronOriginSimulator::updateImaging() {
 // Enhanced image creation method using macOS Application Support directory
 // Replace the createDummyImages method with this version:
 
-void CelestronOriginSimulator::createDummyImages() {
+void CelestronOriginSimulator::createDummyImagesOld() {
     // Create Application Support directory structure (macOS standard)
     QString homeDir = QDir::homePath();
     QString appSupportDir = QDir(homeDir).absoluteFilePath("Library/Application Support/OriginSimulator");

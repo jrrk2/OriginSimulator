@@ -89,7 +89,7 @@ private:
                          const QString &contentType, const QByteArray &data);
     
     // Initialization
-    void createDummyImages();
+    void createDummyImagesOld();
     void setupTimers();
     void setupConnections();
     void printRuntimeInfo();                    // NEW
