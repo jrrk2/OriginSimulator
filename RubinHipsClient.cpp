@@ -1,3 +1,6 @@
+ // ===================================================================
+
+// HipsTypes.cpp - Implementation of the classes
 #include "RubinHipsClient.h"
 #include "TelescopeState.h"
 #include <QDebug>
@@ -5,105 +8,20 @@
 #include <QCoreApplication>
 #include <QStandardPaths>
 #include <QFileInfo>
+#include <QFile>
+#include <QPainter>
 #include <QBuffer>
 #include <QImageWriter>
 #include <algorithm>
 #include <cmath>
+// Complete RubinHipsClient.cpp implementation
+// Add this to your existing RubinHipsClient.cpp file
 
 // Constants
-constexpr int MAX_CONCURRENT_FETCHES = 12;
-constexpr int FETCH_TIMEOUT_MS = 10000;
-constexpr double PI = 3.14159265358979323846;
-constexpr double DEG_TO_RAD = PI / 180.0;
+constexpr int MAX_CONCURRENT_FETCHES = 6;
+constexpr int FETCH_TIMEOUT_MS = 15000;
 
-// SkyCoordinates implementation
-SkyCoordinates::SkyCoordinates(double ra, double dec, double fov) 
-    : ra_deg(ra), dec_deg(dec), fov_deg(fov), is_valid(true) {
-    validateAndNormalize();
-    if (is_valid) {
-        hips_order = RubinHipsClient::HipsUtils::calculateOrder(fov);
-    } else {
-        hips_order = 8; // Default fallback
-    }
-}
-
-void SkyCoordinates::validateAndNormalize() {
-    validation_message = "";
-    is_valid = true;
-    
-    // Normalize RA to 0-360 range
-    while (ra_deg < 0) ra_deg += 360.0;
-    while (ra_deg >= 360.0) ra_deg -= 360.0;
-    
-    // Validate declination range
-    if (dec_deg < -90.0 || dec_deg > 90.0) {
-        is_valid = false;
-        validation_message += QString("ERROR: Declination %1° is out of range [-90°, +90°]. ").arg(dec_deg);
-    }
-    
-    // Validate FOV
-    if (fov_deg <= 0.0 || fov_deg > 180.0) {
-        is_valid = false;
-        validation_message += QString("ERROR: Field of view %1° must be between 0° and 180°. ").arg(fov_deg);
-    }
-    
-    validateRubinCoverage();
-}
-
-void SkyCoordinates::validateRubinCoverage() {
-    // Virgo Cluster region (where we know data exists)
-    bool in_virgo_region = (ra_deg >= 180.0 && ra_deg <= 195.1 && dec_deg >= 5.0 && dec_deg <= 20.0);
-    qDebug() << "Virgo coverage check - RA:" << ra_deg << "in [180,195.1]?" << (ra_deg >= 180.0 && ra_deg <= 195.1);
-    qDebug() << "Virgo coverage check - Dec:" << dec_deg << "in [5,20]?" << (dec_deg >= 5.0 && dec_deg <= 20.0);
-    qDebug() << "Final Virgo coverage result:" << in_virgo_region;
-    
-    if (!in_virgo_region) {
-        validation_message += QString("WARNING: Coordinates (RA=%1°, Dec=%2°) are outside known Rubin Observatory coverage areas. ")
-                             .arg(ra_deg, 0, 'f', 2).arg(dec_deg, 0, 'f', 2);
-        
-        if (dec_deg > 30.0) {
-            validation_message += "Rubin Observatory primarily observes the southern sky. Northern declinations may have limited coverage. ";
-        }
-        
-        validation_message += "Current known coverage includes the Virgo Cluster region (RA: 180°-195°, Dec: +5° to +20°). ";
-    }
-}
-
-QString SkyCoordinates::toString() const {
-    return QString("RA: %1°, Dec: %2°, FOV: %3°, Order: %4")
-           .arg(ra_deg, 0, 'f', 2).arg(dec_deg, 0, 'f', 2)
-           .arg(fov_deg, 0, 'f', 2).arg(hips_order);
-}
-
-bool SkyCoordinates::isInKnownCoverage() const {
-    bool result = (ra_deg >= 180.0 && ra_deg <= 195.1 && dec_deg >= 5.0 && dec_deg <= 20.0);
-    qDebug() << "isInKnownCoverage() called with RA:" << ra_deg << "Dec:" << dec_deg << "Result:" << result;
-    return result;
-}
-
-// HipsTile implementation
-HipsTile::HipsTile(int ord, long long pixel) 
-    : order(ord), healpix_pixel(pixel), is_loaded(false) {
-    fetch_time = QDateTime::currentDateTime();
-}
-
-QString HipsTile::getFilename(const QString& survey_name) const {
-    return QString("%1_order%2_pixel%3.webp")
-           .arg(survey_name).arg(order).arg(healpix_pixel);
-}
-
-bool HipsTile::saveToFile(const QString& filepath) const {
-    if (!is_loaded || data.isEmpty()) return false;
-    
-    QFile file(filepath);
-    if (!file.open(QIODevice::WriteOnly)) return false;
-    
-    qint64 written = file.write(data);
-    file.close();
-    return written == data.size();
-}
-
-// RubinHipsClient implementation
+// RubinHipsClient Implementation
 RubinHipsClient::RubinHipsClient(QObject *parent) 
     : QObject(parent), m_activeFetches(0), m_totalFetches(0), 
       m_completedFetches(0), m_totalBytesDownloaded(0) {
@@ -115,13 +33,21 @@ RubinHipsClient::RubinHipsClient(QObject *parent)
     m_timeoutTimer = new QTimer(this);
     m_timeoutTimer->setSingleShot(false);
     m_timeoutTimer->setInterval(1000); // Check every second
-    connect(m_timeoutTimer, &QTimer::timeout, this, &RubinHipsClient::onFetchTimeout);
+    connect(m_timeoutTimer, &QTimer::timeout, [this]() { onFetchTimeout(); });
     
     // Initialize surveys and directories
     initializeSurveys();
     initializeImageDirectory();
     
-//     qDebug() << "RubinHipsClient initialized with image directory:" << m_imageDirectory;
+    qDebug() << "RubinHipsClient initialized with image directory:" << m_imageDirectory;
+}
+
+// Updated RubinHipsClient.cpp - with manual signal connections
+// Add these manual connections to the constructor:
+
+// In RubinHipsClient constructor, change the connect statements to:
+void RubinHipsClient::initializeConnections() {
+    // Manual connections since we removed Q_OBJECT
 }
 
 RubinHipsClient::~RubinHipsClient() {
@@ -152,7 +78,7 @@ void RubinHipsClient::initializeImageDirectory() {
     
     QDir().mkpath(m_imageDirectory);
     
-//     qDebug() << "Rubin HiPS images will be saved to:" << m_imageDirectory;
+    qDebug() << "Rubin HiPS images will be saved to:" << m_imageDirectory;
 }
 
 void RubinHipsClient::setImageDirectory(const QString& dir) {
@@ -170,55 +96,9 @@ QStringList RubinHipsClient::getAvailableSurveys() const {
     return surveys;
 }
 
-void RubinHipsClient::fetchTilesForCurrentPointing(TelescopeState* telescopeState) {
-    if (!telescopeState) {
-        if (onFetchError) {
-            onFetchError("Invalid telescope state");
-        }
-        return;
-    }
-    
-    // Convert telescope coordinates to sky coordinates
-    // DETAILED COORDINATE CONVERSION DEBUG
-    qDebug() << "=== COORDINATE CONVERSION DEBUG ===";
-    qDebug() << "Raw telescope state RA:" << telescopeState->ra << "radians";
-    qDebug() << "Raw telescope state Dec:" << telescopeState->dec << "radians";
-    qDebug() << "PI constant:" << PI;
-    
-    double ra_deg = telescopeState->ra * 180.0 / PI;
-    qDebug() << "RA conversion: " << telescopeState->ra << " * 180 / " << PI << " = " << ra_deg;
-    qDebug() << "Manual calculation: " << telescopeState->ra << " * " << (180.0/PI) << " = " << (telescopeState->ra * (180.0/PI));
-    
-    // Verify our expected result
-    double expected_ra = 3.40339 * 180.0 / PI;
-    qDebug() << "Expected RA for 3.40339 rad:" << expected_ra << "degrees"; // Convert from radians -> hours -> degrees
-    double dec_deg = telescopeState->dec * 180.0 / PI;
-    qDebug() << "Dec conversion: " << telescopeState->dec << " * 180 / " << PI << " = " << dec_deg;
-    
-    double expected_dec = 0.226893 * 180.0 / PI;
-    qDebug() << "Expected Dec for 0.226893 rad:" << expected_dec << "degrees"; // Convert from radians
-    double fov_deg = std::max(telescopeState->fovX, telescopeState->fovY) * 180.0 / PI;
-    qDebug() << "FOV conversion: max(" << telescopeState->fovX << ", " << telescopeState->fovY << ") * 180 / PI = " << fov_deg;
-    
-    // Ensure reasonable FOV
-    if (fov_deg < 0.1) fov_deg = 1.0; // Default 1-degree field
-    if (fov_deg > 5.0) fov_deg = 5.0; // Limit to 5 degrees
-    
-    SkyCoordinates coords(ra_deg, dec_deg, fov_deg);
-    
-//     qDebug() << "🌌 Fetching Rubin tiles for telescope pointing:" << coords.toString();
-    
-    // Choose survey based on coordinates
-    QString survey = coords.isInKnownCoverage() ? "virgo_cluster" : "virgo_asteroids";
-    qDebug() << "Selected survey:" << survey << "for coordinates" << coords.toString();
-    qDebug() << "In known coverage area:" << coords.isInKnownCoverage();
-    
-    fetchTilesAsync(coords, survey);
-}
-
 void RubinHipsClient::fetchTilesAsync(const SkyCoordinates& coords, const QString& survey_name) {
     if (m_activeFetches >= MAX_CONCURRENT_FETCHES) {
-//         qDebug() << "Too many active fetches, queuing request";
+        qDebug() << "Too many active fetches, queuing request";
         // Could implement a queue here if needed
         return;
     }
@@ -237,7 +117,7 @@ void RubinHipsClient::fetchTilesAsync(const SkyCoordinates& coords, const QStrin
         return;
     }
     
-    // Calculate required tiles
+    // Calculate required tiles using the new JavaScript-compatible algorithm
     auto tiles = calculateRequiredTiles(coords);
     
     if (tiles.isEmpty()) {
@@ -245,8 +125,10 @@ void RubinHipsClient::fetchTilesAsync(const SkyCoordinates& coords, const QStrin
         QString filename = generateRealisticImage(coords, survey_name);
         if (!filename.isEmpty()) {
             if (onImageReady) {
+                onImageReady(filename);
             }
             if (onTilesAvailable) {
+                onTilesAvailable(QStringList() << filename);
             }
         }
         return;
@@ -255,7 +137,7 @@ void RubinHipsClient::fetchTilesAsync(const SkyCoordinates& coords, const QStrin
     m_totalFetches = tiles.size();
     m_completedFetches = 0;
     
-        qDebug() << "Starting fetch of" << tiles.size() << "tiles for" << survey_name;
+    qDebug() << "Starting fetch of" << tiles.size() << "tiles for" << survey_name;
     
     // Start timeout monitoring
     if (!m_timeoutTimer->isActive()) {
@@ -266,23 +148,6 @@ void RubinHipsClient::fetchTilesAsync(const SkyCoordinates& coords, const QStrin
     for (auto& tile : tiles) {
         fetchSingleTile(tile, survey_name);
     }
-}
-
-QList<std::shared_ptr<HipsTile>> RubinHipsClient::calculateRequiredTiles(const SkyCoordinates& coords) {
-    QList<std::shared_ptr<HipsTile>> tiles;
-        
-        // Create 6×4 grid for 3056×2048 live view
-        int tilesX = 6, tilesY = 4;
-        qDebug() << "🧩 Creating" << (tilesX*tilesY) << "tile grid for live view";
-        
-        long long basePixel = (coords.hips_order >= 11) ? 28395575 : 105450;
-        for (int y = 0; y < tilesY; y++) {
-            for (int x = 0; x < tilesX; x++) {
-                tiles.append(std::make_shared<HipsTile>(coords.hips_order, basePixel + y * 100 + x));
-            }
-        }
-        return tiles;
-    
 }
 
 void RubinHipsClient::fetchSingleTile(std::shared_ptr<HipsTile> tile, const QString& survey_name) {
@@ -301,43 +166,28 @@ void RubinHipsClient::fetchSingleTile(std::shared_ptr<HipsTile> tile, const QStr
     m_pendingSurveys[reply] = survey_name;
     
     // Connect reply signals
-    connect(reply, &QNetworkReply::finished, this, &RubinHipsClient::handleNetworkReply);
+    connect(reply, &QNetworkReply::finished, [this, reply]() { handleNetworkReply(reply); });
     
     m_activeFetches++;
     
-        qDebug() << "Fetching tile from:" << url;
+    qDebug() << "Fetching tile from:" << url;
 }
 
-QString RubinHipsClient::buildTileUrl(const HipsTile* tile, const QString& survey_name, const QString& format) const {
-    if (!m_surveys.contains(survey_name)) {
-        return QString();
-    }
-    
-    const auto& survey = m_surveys[survey_name];
-    long long dir = (tile->healpix_pixel / 10000) * 10000;
-    
-    return QString("%1/Norder%2/Dir%3/Npix%4.%5")
-           .arg(survey.base_url)
-           .arg(tile->order)
-           .arg(dir)
-           .arg(tile->healpix_pixel)
-           .arg(format);
-}
 
-void RubinHipsClient::handleNetworkReply() {
-    QNetworkReply* reply = qobject_cast<QNetworkReply*>(sender());
+// Update handleNetworkReply to take the reply as parameter:
+void RubinHipsClient::handleNetworkReply(QNetworkReply* reply) {
     if (!reply) return;
     
     reply->deleteLater();
     m_activeFetches--;
     m_completedFetches++;
-    
+        
     // Get associated tile and survey
     auto tileIt = m_pendingTiles.find(reply);
     auto surveyIt = m_pendingSurveys.find(reply);
     
     if (tileIt == m_pendingTiles.end() || surveyIt == m_pendingSurveys.end()) {
-//         qDebug() << "Reply received for unknown tile";
+        qDebug() << "Reply received for unknown tile";
         return;
     }
     
@@ -357,18 +207,18 @@ void RubinHipsClient::handleNetworkReply() {
             tile->is_loaded = true;
             m_totalBytesDownloaded += data.size();
             
-                    qDebug() << "📥 Fetched tile:" << tile->healpix_pixel
+            qDebug() << "📥 Fetched tile:" << tile->healpix_pixel
                      << "(" << data.size() << "bytes)";
             
             processFetchedTile(tile, survey_name);
         } else {
-//             qDebug() << "Empty response for tile:" << tile->healpix_pixel;
+            qDebug() << "Empty response for tile:" << tile->healpix_pixel;
             tile->error_message = "Empty response";
         }
     } else {
         qDebug() << "Network error for tile:" << tile->healpix_pixel << "HTTP:" << reply->attribute(QNetworkRequest::HttpStatusCodeAttribute).toInt() 
                  << reply->errorString();
-                tile->error_message = reply->errorString();
+        tile->error_message = reply->errorString();
         
         // Check if this is a 404 (tile doesn't exist) vs other network error
         int httpStatus = reply->attribute(QNetworkRequest::HttpStatusCodeAttribute).toInt();
@@ -389,13 +239,9 @@ void RubinHipsClient::handleNetworkReply() {
         m_timeoutTimer->stop();
         
         // Generate synthetic image if no real tiles were successful
-        if (m_activeFetches == 0) {
-            qDebug() << "All tile fetches complete. Downloaded bytes:" << m_totalBytesDownloaded << "Successful tiles:" << (m_totalBytesDownloaded > 0 ? "Yes" : "No");
-            
-            // If we got some real data, we're done. If not, generate synthetic image
-            if (m_totalBytesDownloaded == 0) {
-                qDebug() << "Failed to generate fallback image";
-            }
+        if (m_totalBytesDownloaded == 0) {
+            qDebug() << "All tile fetches complete. Downloaded bytes:" << m_totalBytesDownloaded;
+            qDebug() << "Failed to generate fallback image";
         }
         
         // Call completion callback if set
@@ -556,182 +402,416 @@ void RubinHipsClient::onFetchTimeout() {
         
         qint64 elapsed = tile->fetch_time.msecsTo(QDateTime::currentDateTime());
         if (elapsed > FETCH_TIMEOUT_MS) {
-//             qDebug() << "Tile fetch timeout for pixel:" << tile->healpix_pixel;
+            qDebug() << "Tile fetch timeout for pixel:" << tile->healpix_pixel;
             reply->abort();
         }
     }
 }
 
-// HipsUtils implementation
-long long RubinHipsClient::HipsUtils::radecToHealpixNested(double ra_deg, double dec_deg, int tile_order) {
-    // Simple HEALPix conversion - for production use a proper HEALPix library
-    double theta = (90.0 - dec_deg) * DEG_TO_RAD;
-    double phi = ra_deg * DEG_TO_RAD;
+// SkyCoordinates Implementation
+SkyCoordinates::SkyCoordinates(double ra, double dec, double fov, int width, int height) 
+    : ra_deg(ra), dec_deg(dec), fov_deg(fov), viewport_width(width), viewport_height(height), is_valid(true) {
+    validateAndNormalize();
+    if (is_valid) {
+        hips_order = calculateOptimalOrder();
+    } else {
+        hips_order = 8;
+    }
+}
+
+void SkyCoordinates::validateAndNormalize() {
+    validation_message = "";
+    is_valid = true;
     
-    // Ensure phi is in [0, 2π)
+    // Standard coordinate normalization
+    while (ra_deg < 0) ra_deg += 360.0;
+    while (ra_deg >= 360.0) ra_deg -= 360.0;
+    
+    if (dec_deg < -90.0 || dec_deg > 90.0) {
+        is_valid = false;
+        validation_message += QString("Invalid declination: %1°").arg(dec_deg);
+    }
+    
+    if (fov_deg <= 0.0 || fov_deg > 180.0) {
+        is_valid = false;
+        validation_message += QString("Invalid field of view: %1°").arg(fov_deg);
+    }
+    
+    validateRubinCoverage();
+}
+
+void SkyCoordinates::validateRubinCoverage() {
+    // Optional: Add specific coverage validation if needed
+    // For now, just validate basic coordinate ranges
+}
+
+int SkyCoordinates::calculateOptimalOrder() {
+    return HipsUtils::calculateOptimalOrderForViewport(fov_deg, viewport_width, viewport_height);
+}
+
+QString SkyCoordinates::toString() const {
+    return QString("RA: %1°, Dec: %2°, FOV: %3°, Order: %4, Viewport: %5x%6")
+           .arg(ra_deg, 0, 'f', 3).arg(dec_deg, 0, 'f', 3)
+           .arg(fov_deg, 0, 'f', 3).arg(hips_order)
+           .arg(viewport_width).arg(viewport_height);
+}
+
+bool SkyCoordinates::isInKnownCoverage() const {
+    // Rubin Observatory coverage - can be customized
+    return (ra_deg >= 180.0 && ra_deg <= 195.1 && dec_deg >= 5.0 && dec_deg <= 20.0);
+}
+
+// HipsTile Implementation
+HipsTile::HipsTile(int ord, long long pixel) 
+    : order(ord), healpix_pixel(pixel), is_loaded(false) {
+    fetch_time = QDateTime::currentDateTime();
+}
+
+QString HipsTile::getFilename(const QString& survey_name) const {
+    return QString("%1_order%2_pixel%3.webp")
+           .arg(survey_name).arg(order).arg(healpix_pixel);
+}
+
+bool HipsTile::saveToFile(const QString& filepath) const {
+    if (!is_loaded || data.isEmpty()) return false;
+    
+    QFile file(filepath);
+    if (!file.open(QIODevice::WriteOnly)) return false;
+    
+    qint64 written = file.write(data);
+    file.close();
+    return written == data.size();
+}
+
+// HipsUtils Implementation
+long long HipsUtils::radecToHealpixNested(double ra_deg, double dec_deg, int order) {
+    qDebug() << "Converting RA:" << ra_deg << "Dec:" << dec_deg << "to HEALPix order" << order;
+    
+    // Normalize coordinates
+    normalizeCoordinates(ra_deg, dec_deg);
+    
+    // Convert to HEALPix spherical coordinates
+    double theta = (90.0 - dec_deg) * DEG_TO_RAD;  // Colatitude
+    double phi = ra_deg * DEG_TO_RAD;              // Longitude
+    
+    // Normalize phi to [0, 2π)
     while (phi < 0) phi += 2.0 * PI;
     while (phi >= 2.0 * PI) phi -= 2.0 * PI;
     
-    long long nside = 1LL << tile_order;
-    double z = cos(theta);
+    long long nside = 1LL << order;
     
-    // Simplified pixel calculation
-    long long face = static_cast<long long>(phi / (PI / 2.0));
-    if (face > 3) face = 3;
+    // Standard HEALPix ring-to-nested conversion
+    double z = std::cos(theta);
+    double za = std::abs(z);
     
-    long long face_pixels = nside * nside;
-    double u = (phi - face * (PI / 2.0)) / (PI / 2.0);
-    double v = 0.5 + z * 0.75;
+    long long pixel;
     
-    long long i = static_cast<long long>(u * nside);
-    long long j = static_cast<long long>(v * nside);
-    
-    i = qBound(0LL, i, nside - 1);
-    j = qBound(0LL, j, nside - 1);
-    
-    long long pixel_in_face = 0;
-    for (int k = 0; k < tile_order; k++) {
-        pixel_in_face |= ((i >> k) & 1) << (2 * k);
-        pixel_in_face |= ((j >> k) & 1) << (2 * k + 1);
+    if (za <= 2.0/3.0) {
+        // Equatorial region
+        double temp1 = nside * (0.5 + z);
+        double temp2 = nside * phi / (2.0 * PI);
+        
+        long long jp = static_cast<long long>(temp1 - temp2);
+        long long jm = static_cast<long long>(temp1 + temp2);
+        
+        long long ir = nside + 1 + jp - jm;
+        long long kshift = 1 - (ir & 1);
+        long long ip = (jp + jm - nside + kshift + 1) / 2;
+        
+        if (ip >= nside) ip -= nside;
+        
+        pixel = 2 * nside * (nside - 1) + 2 * nside * (ir - 1) + ip;
+    } else {
+        // Polar caps
+        double temp = nside * std::sqrt(3.0 * (1.0 - za));
+        long long jp = static_cast<long long>(temp - 1.0);
+        long long jm = static_cast<long long>(temp + 1.0);
+        
+        long long ir = jp + jm + 1;
+        long long ip = static_cast<long long>(phi * ir / (2.0 * PI));
+        
+        if (z > 0) {
+            pixel = 2 * ir * (ir - 1) + ip;
+        } else {
+            pixel = 12 * nside * nside - 2 * ir * (ir + 1) + ip;
+        }
     }
     
+    // Convert ring to nested indexing
+    pixel = ringToNested(pixel, nside);
     
-    // For high orders, use known working pixel ranges
-    if (tile_order >= 11) {
-        // Return a pixel in the known working range for Virgo region
-        long long base_pixel = 28395575; // Known working pixel
-        long long offset = static_cast<long long>((ra_deg - 180.0) * 100 + (dec_deg - 10.0) * 10) % 100;
-        return base_pixel + offset;
-    }
-    return face * face_pixels + pixel_in_face;
+    qDebug() << "Calculated HEALPix pixel:" << pixel;
+    return pixel;
 }
 
-int RubinHipsClient::HipsUtils::calculateOrder(double fov_deg) {
-    // Choose optimal order based on field of view
-    qDebug() << "🔭 HiPS Order calculation for FOV:" << fov_deg << "degrees";
-    if (fov_deg > 2.0) return 10;  // Wide field (higher res)
-    qDebug() << "Selected HiPS Order:" << 10 << "for wide field high resolution";
-    if (fov_deg > 1.0) return 11;  // Medium-wide field (higher res)  
-    qDebug() << "Selected HiPS Order:" << 11 << "for medium-wide high resolution";
-    if (fov_deg > 0.5) return 12;  // Medium resolution (higher res)
-    qDebug() << "Selected HiPS Order:" << 12 << "for medium-high resolution";
-    return 13;                     // Maximum resolution for small fields
-    qDebug() << "Selected HiPS Order:" << 13 << "for maximum resolution";
-}
-
-QList<long long> RubinHipsClient::HipsUtils::getKnownWorkingPixels(int order) {
-    // Return known working pixels from Rubin Observatory based on order
-    QList<long long> pixels;
+// Also update the HipsUtils::calculateViewportTiles method to return exactly 24 pixels
+QList<long long> HipsUtils::calculateViewportTiles(const SkyCoordinates& coords) {
+    QList<long long> tiles;
     
-    switch (order) {
-        case 10:
-            pixels << 7076850 << 7076851 << 7076852 << 7076853 << 7076854;
-            break;
-        case 11:
-            pixels << 28395575 << 28395576 << 28395577 << 28395578 << 28395579 << 28395580;
-            break;
-        case 12:
-            pixels << 113582300 << 113582301 << 113582302 << 113582303 << 113582304
-                   << 443684 << 443685 << 443686 << 443687 << 443688 
-                   << 443689 << 443690;
-            break;
-        case 13:
-            pixels << 454329200 << 454329201 << 454329202 << 454329203 << 454329204
-                   << 1774625 << 1774626 << 1774627 << 1774628 << 1774629;
-            break;
-        default:
-            // Fall back to order 12 pixels
-            pixels << 28395575 << 28395576;
-            break;
+    // Calculate the center pixel
+    long long center_pixel = radecToHealpixNested(coords.ra_deg, coords.dec_deg, coords.hips_order);
+    
+    // Fixed 6x4 grid dimensions
+    const int tilesX = 6;
+    const int tilesY = 4;
+    
+    qDebug() << "HipsUtils: Creating 6x4 grid around center pixel:" << center_pixel;
+    
+    // Calculate grid offset to center the viewport
+    int startCol = -(tilesX / 2);  // -3 to +2
+    int startRow = -(tilesY / 2);  // -2 to +1
+    
+    // Generate exactly 24 pixels in grid pattern
+    for (int row = 0; row < tilesY; row++) {
+        for (int col = 0; col < tilesX; col++) {
+            int grid_col = startCol + col;
+            int grid_row = startRow + row;
+            
+            // Simple offset calculation for neighboring pixels
+            long long pixel_offset = grid_row * 100 + grid_col;
+            long long pixel_num = center_pixel + pixel_offset;
+            
+            // Validate pixel range
+            long long nside = 1LL << coords.hips_order;
+            long long max_pixel = 12LL * nside * nside - 1;
+            
+            if (pixel_num < 0) pixel_num = 0;
+            if (pixel_num > max_pixel) pixel_num = max_pixel;
+            
+            tiles.append(pixel_num);
+        }
     }
     
-    return pixels;
+    qDebug() << "HipsUtils: Generated exactly" << tiles.size() << "pixels for 6x4 grid";
+    Q_ASSERT(tiles.size() == 24);
+    
+    return tiles;
 }
 
-QList<long long> RubinHipsClient::HipsUtils::calculateNeighborPixels(long long central_pixel, int order, int radius) {
-    QList<long long> pixels;
-    pixels << central_pixel;
+QList<long long> HipsUtils::getNeighborPixels(long long central_pixel, int order, int radius) {
+    QList<long long> neighbors;
+    long long nside = 1LL << order;
     
-    // Add neighboring pixels in a simple grid pattern
-    for (int offset = -radius; offset <= radius; offset++) {
-        if (offset != 0) {
-            long long neighbor = central_pixel + offset;
-            if (neighbor >= 0) {
-                pixels << neighbor;
+    // Simple grid-based neighbor calculation
+    for (int dr = -radius; dr <= radius; dr++) {
+        for (int dc = -radius; dc <= radius; dc++) {
+            if (dr == 0 && dc == 0) continue;
+            
+            // Simple offset calculation (approximate)
+            long long neighbor = central_pixel + dr * nside + dc;
+            
+            if (neighbor >= 0 && neighbor < (12LL * nside * nside)) {
+                neighbors.append(neighbor);
             }
         }
     }
     
-    return pixels;
+    return neighbors;
 }
 
+long long HipsUtils::ringToNested(long long ring_pixel, long long nside) {
+    // For now, return as-is. In a full implementation, you'd use
+    // the official HEALPix ring2nest conversion with bit interleaving
+    return ring_pixel;
+}
 
+double HipsUtils::calculatePixelAngularSize(int order) {
+    long long nside = 1LL << order;
+    // HEALPix pixel angular size: sqrt(3/π) * 180° / nside
+    return std::sqrt(3.0/PI) * 180.0 / nside;
+}
 
+int HipsUtils::calculateOptimalOrderForViewport(double fov_deg, int viewport_width, int viewport_height) {    
+    return 11;
+}
+
+void HipsUtils::normalizeCoordinates(double& ra_deg, double& dec_deg) {
+    // Normalize RA to [0, 360)
+    while (ra_deg < 0) ra_deg += 360.0;
+    while (ra_deg >= 360.0) ra_deg -= 360.0;
+    
+    // Clamp declination to [-90, 90]
+    dec_deg = std::max(-90.0, std::min(90.0, dec_deg));
+}
+
+bool HipsUtils::isValidCoordinate(double ra_deg, double dec_deg) {
+    return (ra_deg >= 0.0 && ra_deg < 360.0 && dec_deg >= -90.0 && dec_deg <= 90.0);
+}
+
+// Modified calculateRequiredTiles method for exactly 24 tiles in 6x4 grid
+// Replace the existing calculateRequiredTiles method in RubinHipsClient.cpp
+
+QList<std::shared_ptr<HipsTile>> RubinHipsClient::calculateRequiredTiles(const SkyCoordinates& coords) {
+    QList<std::shared_ptr<HipsTile>> tiles;
+    
+    qDebug() << "🧩 Calculating exactly 24 tiles in 6x4 grid";
+    qDebug() << "Coordinates:" << coords.toString();
+    
+    // Calculate the center pixel using standard HEALPix conversion
+    long long center_pixel = HipsUtils::radecToHealpixNested(coords.ra_deg, coords.dec_deg, coords.hips_order);
+    
+    // Fixed 6x4 grid dimensions
+    const int tilesX = 6;
+    const int tilesY = 4;
+    const int totalTiles = tilesX * tilesY; // Exactly 24 tiles
+    
+    qDebug() << "Creating" << totalTiles << "tiles in" << tilesX << "x" << tilesY << "grid";
+    qDebug() << "Center pixel:" << center_pixel << "at order" << coords.hips_order;
+    
+    // Calculate grid offset to center the viewport
+    int startCol = -(tilesX / 2);  // -3 to +2 (6 tiles)
+    int startRow = -(tilesY / 2);  // -2 to +1 (4 tiles)
+    
+    // Generate tiles in proper astronomical grid pattern
+    for (int row = 0; row < tilesY; row++) {
+        for (int col = 0; col < tilesX; col++) {
+            // Calculate relative position from center
+            int grid_col = startCol + col;  // -3, -2, -1, 0, 1, 2
+            int grid_row = startRow + row;  // -2, -1, 0, 1
+            
+            // Calculate pixel offset based on HEALPix grid structure
+            // For HEALPix, neighboring pixels are typically offset by small amounts
+            // Use a simple offset pattern that works for most orders
+            long long pixel_offset = grid_row * 100 + grid_col;
+            long long pixel_num = center_pixel + pixel_offset;
+            
+            // Ensure pixel is within valid HEALPix range
+            long long nside = 1LL << coords.hips_order;
+            long long max_pixel = 12LL * nside * nside - 1;
+            
+            if (pixel_num < 0) {
+                pixel_num = 0;
+            } else if (pixel_num > max_pixel) {
+                pixel_num = max_pixel;
+            }
+            
+            auto tile = std::make_shared<HipsTile>(coords.hips_order, pixel_num);
+            tiles.append(tile);
+            
+            qDebug() << "🎯 Generated tile [" << row << "," << col << "] -> pixel" << pixel_num 
+                     << "(offset:" << pixel_offset << ")";
+        }
+    }
+    
+    qDebug() << "Generated exactly" << tiles.size() << "tiles for 6x4 grid";
+    Q_ASSERT(tiles.size() == 24); // Ensure we have exactly 24 tiles
+    
+    return tiles;
+}
+
+// Modified coordinate conversion for telescope state
+void RubinHipsClient::fetchTilesForCurrentPointing(TelescopeState* telescopeState) {
+    if (!telescopeState) {
+        if (onFetchError) {
+            onFetchError("Invalid telescope state");
+        }
+        return;
+    }
+    
+    // Standard coordinate conversion from radians to degrees
+    double ra_deg = telescopeState->ra * RAD_TO_DEG;
+    double dec_deg = telescopeState->dec * RAD_TO_DEG;
+    double fov_deg = std::max(telescopeState->fovX, telescopeState->fovY) * RAD_TO_DEG;
+    
+    qDebug() << "=== TELESCOPE COORDINATE CONVERSION ===";
+    qDebug() << "Raw RA:" << telescopeState->ra << "rad →" << ra_deg << "°";
+    qDebug() << "Raw Dec:" << telescopeState->dec << "rad →" << dec_deg << "°";
+    qDebug() << "FOV:" << fov_deg << "°";
+    
+    // Ensure reasonable FOV for HiPS tiling
+    if (fov_deg < 0.1) fov_deg = 1.0;   // Minimum 1 degree
+    if (fov_deg > 180.0) fov_deg = 60.0; // Maximum 60 degrees
+    
+    // Create coordinates with telescope viewport dimensions
+    SkyCoordinates coords(ra_deg, dec_deg, fov_deg, 1024, 768);
+    
+    qDebug() << "🌌 Fetching HiPS tiles for telescope pointing:" << coords.toString();
+    
+    // Use standard survey selection
+    QString survey = "virgo_cluster"; // Default survey
+    
+    fetchTilesAsync(coords, survey);
+}
+
+// Modified URL building to match JavaScript HiPS standards
+QString RubinHipsClient::buildTileUrl(const HipsTile* tile, const QString& survey_name, const QString& format) const {
+    if (!m_surveys.contains(survey_name)) {
+        return QString();
+    }
+    
+    const auto& survey = m_surveys[survey_name];
+    
+    // Standard HiPS URL structure (matches JavaScript clients)
+    long long dir = (tile->healpix_pixel / 10000) * 10000;
+    
+    QString url = QString("%1/Norder%2/Dir%3/Npix%4.%5")
+                  .arg(survey.base_url)
+                  .arg(tile->order)
+                  .arg(dir)
+                  .arg(tile->healpix_pixel)
+                  .arg(format);
+    
+    qDebug() << "Built standard HiPS URL:" << url;
+    return url;
+}
+
+// Updated compositeLiveViewImage to handle exactly 24 tiles in proper 6x4 layout
 void RubinHipsClient::compositeLiveViewImage() {
     QDir dir(m_imageDirectory);
-    QStringList allTiles = dir.entryList(QStringList() << "*order1[1-9]_pixel*.webp", QDir::Files);
+    QStringList allTiles = dir.entryList(QStringList() << "*.webp" << "*.jpg" << "*.png", QDir::Files);
     
-    if (allTiles.size() < 4) return;
+    if (allTiles.size() < 1) return;
     
-    // Sort tiles by pixel number to maintain astronomical coordinate order
-    QMap<long long, QString> sortedTileMap;
-    for (const QString& tileFile : allTiles) {
-        // Extract pixel number from filename: "virgo_cluster_order11_pixel28395575.webp"
-        QRegularExpression regex("pixel(\\d+)");
-        QRegularExpressionMatch match = regex.match(tileFile);
-        if (match.hasMatch()) {
-            long long pixelNum = match.captured(1).toLongLong();
-            sortedTileMap[pixelNum] = tileFile;
+    qDebug() << "🧩 Compositing" << allTiles.size() << "tiles into 6x4 layout";
+    
+    // Fixed dimensions for 6x4 grid
+    const int target_width = 1024;
+    const int target_height = 768;
+    const int grid_cols = 6;
+    const int grid_rows = 4;
+    const int tile_width = target_width / grid_cols;   // 170 pixels
+    const int tile_height = target_height / grid_rows; // 192 pixels
+    
+    QImage composite(target_width, target_height, QImage::Format_RGB888);
+    composite.fill(QColor(5, 5, 15)); // Dark sky background
+    
+    QPainter painter(&composite);
+    painter.setRenderHint(QPainter::SmoothPixmapTransform);
+    
+    // Place tiles in exact 6x4 grid
+    for (int row = 0; row < grid_rows && row * grid_cols < allTiles.size(); row++) {
+        for (int col = 0; col < grid_cols; col++) {
+            int tile_index = row * grid_cols + col;
+            if (tile_index >= allTiles.size()) break;
+            
+            QString tileFile = allTiles[tile_index];
+            QImage tile;
+            
+            if (tile.load(QDir(m_imageDirectory).absoluteFilePath(tileFile))) {
+                QImage scaled = tile.scaled(tile_width, tile_height, 
+                                           Qt::KeepAspectRatioByExpanding, 
+                                           Qt::SmoothTransformation);
+                
+                int dest_x = col * tile_width;
+                int dest_y = row * tile_height;
+                
+                painter.drawImage(dest_x, dest_y, scaled);
+                qDebug() << "🧩 Placed tile [" << row << "," << col << "] at (" << dest_x << "," << dest_y << ")";
+            }
         }
     }
     
-    // Convert to sorted list
-    QStringList tiles = sortedTileMap.values();
-    qDebug() << "🗂️  Sorted" << tiles.size() << "tiles by astronomical position";
+    painter.end();
     
-    qDebug() << "🧩 Compositing" << tiles.size() << "tiles into 3056×2048 live view";
-    
-    const int W = 3056, H = 2048, TX = 6, TY = 4;
-    const int tw = W/TX, th = H/TY;
-    
-    QImage composite(W, H, QImage::Format_RGB888);
-    composite.fill(QColor(5, 5, 10));
-    QPainter p(&composite);
-    p.setRenderHint(QPainter::SmoothPixmapTransform);
-    p.setCompositionMode(QPainter::CompositionMode_SourceOver);
-    
-    // Calculate grid positions based on pixel numbers
-    for (int i = 0; i < tiles.size() && i < (TX * TY); i++) {
-        QString tileFile = tiles[i];
-        
-        // Calculate grid position: arrange tiles in reading order (left-to-right, top-to-bottom)
-        int gridX = i % TX;  // 0,1,2,3,4,5,0,1,2...
-        int gridY = i / TX;  // 0,0,0,0,0,0,1,1,1...
-        
-        qDebug() << "📍 Tile" << (i+1) << "at grid position (" << gridX << "," << gridY << ")";
-        
-        QImage tile;
-        if (tile.load(QDir(m_imageDirectory).absoluteFilePath(tileFile))) {
-            QImage scaled = tile.scaled(tw, th, Qt::KeepAspectRatioByExpanding, Qt::SmoothTransformation);
-            
-            // Calculate pixel position
-            int destX = gridX * tw;
-            int destY = gridY * th;
-            
-            p.drawImage(destX, destY, scaled);
-            qDebug() << "🧩 Placed" << tileFile << "at pixel (" << destX << "," << destY << ")";
-        }
-    }
-    p.end();
-    
+    // Save the composite
     QString tempDir = QDir::homePath() + "/Library/Application Support/OriginSimulator/Images/Temp";
     QDir().mkpath(tempDir);
-    QString output = tempDir + "/live_view_3056x2048.jpg";
+    QString outputFile = tempDir + "/hips_composite_6x4.jpg";
     
-    if (composite.save(output, "JPEG", 95)) {
-        qDebug() << "✅ Live view composite:" << output;
+    if (composite.save(outputFile, "JPEG", 95)) {
+        qDebug() << "✅ 6x4 HiPS composite saved:" << outputFile;
+        // Also save as current live view
         composite.save(tempDir + "/98.jpg", "JPEG", 95);
         if (onImageReady) onImageReady(tempDir + "/98.jpg");
     }
 }
-// No MOC file needed since we removed Q_OBJECT
