@@ -3,23 +3,8 @@
 	archiveVersion = 1;
 	classes = {
 	};
-	objectVersion = 54;
+	objectVersion = 46;
 	objects = {
-
-/* Begin PBXAggregateTarget section */
-		62E4A782DAB8BF7AE7D0E9C3 /* Qt Preprocess */ = {
-			isa = PBXAggregateTarget;
-			buildConfigurationList = 6CC3B5D2136C7CD6A5CF5A59 /* Build configuration list for PBXNativeTarget "OriginSimulator" */;
-			buildPhases = (
-				5E618435888B9D49F8540165 /* Qt Qmake */,
-				7EF0942E79C014DCEC8976BC /* Qt Preprocessors */,
-			);
-			dependencies = (
-			);
-			name = "Qt Preprocess";
-			productName = "Qt Preprocess";
-		};
-/* End PBXAggregateTarget section */
 
 /* Begin PBXBuildFile section */
 		029C6E44DA83FDB92BC6474D /* StatusSender.cpp in Compile Sources */ = {isa = PBXBuildFile; fileRef = 57B593302AA86F1BB48EF362 /* StatusSender.cpp */; settings = {ATTRIBUTES = (); }; };
@@ -52,16 +37,6 @@
 		FC87C2AC63C56746CD421304 /* main.cpp in Compile Sources */ = {isa = PBXBuildFile; fileRef = 8C3DD443A424810F9B333D6D /* main.cpp */; settings = {ATTRIBUTES = (); }; };
 		FD2642A263593461BB29D490 /* CommandHandler.cpp in Compile Sources */ = {isa = PBXBuildFile; fileRef = AA7E27D039640ED84FB30460 /* CommandHandler.cpp */; settings = {ATTRIBUTES = (); }; };
 /* End PBXBuildFile section */
-
-/* Begin PBXContainerItemProxy section */
-		AB19AC5A2E08879F00E961DC /* PBXContainerItemProxy */ = {
-			isa = PBXContainerItemProxy;
-			containerPortal = 6DB9C3763D02B1415CD9D565 /* Project object */;
-			proxyType = 1;
-			remoteGlobalIDString = 62E4A782DAB8BF7AE7D0E9C3;
-			remoteInfo = "Qt Preprocess";
-		};
-/* End PBXContainerItemProxy section */
 
 /* Begin PBXCopyFilesBuildPhase section */
 		99542592E9780B9225F24AA8 /* Embed Frameworks */ = {
@@ -239,7 +214,7 @@
 /* Begin PBXNativeTarget section */
 		37D5D92660AD5ADAFB9A08A3 /* OriginSimulator */ = {
 			isa = PBXNativeTarget;
-			buildConfigurationList = 6CC3B5D2136C7CD6A5CF5A59 /* Build configuration list for PBXNativeTarget "OriginSimulator" */;
+			buildConfigurationList = 6CC3B5D2136C7CD6A5CF5A59 /* Build configuration list */;
 			buildPhases = (
 				F7E50F631C51CD5B5DC0BC43 /* Compile Sources */,
 				D1C883685E82D5676953459A /* Link Binary With Libraries */,
@@ -249,7 +224,6 @@
 			buildRules = (
 			);
 			dependencies = (
-				21943CFDF1BD7BBC68FECDFC /* PBXTargetDependency */,
 			);
 			name = OriginSimulator;
 			productName = OriginSimulator;
@@ -262,6 +236,11 @@
 		6DB9C3763D02B1415CD9D565 /* Project object */ = {
 			isa = PBXProject;
 			attributes = {
+				TargetAttributes = {
+					37D5D92660AD5ADAFB9A08A3 = {
+						DevelopmentTeam = Y53675G8V9;
+					};
+				};
 			};
 			buildConfigurationList = DAC4C1AA5EDEA1C85E9CA5E6 /* Build configuration list for PBXProject "CelestronOriginSimulator" */;
 			compatibilityVersion = "Xcode 3.2";
@@ -277,7 +256,6 @@
 			projectRoot = "";
 			targets = (
 				37D5D92660AD5ADAFB9A08A3 /* OriginSimulator */,
-				62E4A782DAB8BF7AE7D0E9C3 /* Qt Preprocess */,
 			);
 		};
 /* End PBXProject section */
@@ -292,50 +270,6 @@
 			runOnlyForDeploymentPostprocessing = 0;
 		};
 /* End PBXResourcesBuildPhase section */
-
-/* Begin PBXShellScriptBuildPhase section */
-		5E618435888B9D49F8540165 /* Qt Qmake */ = {
-			isa = PBXShellScriptBuildPhase;
-			buildActionMask = 2147483647;
-			files = (
-			);
-			inputPaths = (
-			);
-			name = "Qt Qmake";
-			outputPaths = (
-			);
-			runOnlyForDeploymentPostprocessing = 0;
-			shellPath = /bin/sh;
-			shellScript = "make -C /Users/jonathan/OriginSimulator -f CelestronOriginSimulator.xcodeproj/qt_makeqmake.mak";
-			showEnvVarsInLog = 0;
-		};
-		7EF0942E79C014DCEC8976BC /* Qt Preprocessors */ = {
-			isa = PBXShellScriptBuildPhase;
-			alwaysOutOfDate = 1;
-			buildActionMask = 2147483647;
-			files = (
-			);
-			inputPaths = (
-				/opt/homebrew/share/qt/mkspecs/features/data/dummy.cpp,
-				CelestronOriginSimulator.h,
-				WebsocketConnection.h,
-				CommandHandler.h,
-				StatusSender.h,
-			);
-			name = "Qt Preprocessors";
-			outputPaths = (
-				moc_predefs.h,
-				moc_CelestronOriginSimulator.cpp,
-				moc_WebsocketConnection.cpp,
-				moc_CommandHandler.cpp,
-				moc_StatusSender.cpp,
-			);
-			runOnlyForDeploymentPostprocessing = 0;
-			shellPath = /bin/sh;
-			shellScript = "make -C /Users/jonathan/OriginSimulator -f CelestronOriginSimulator.xcodeproj/qt_preprocess.mak";
-			showEnvVarsInLog = 0;
-		};
-/* End PBXShellScriptBuildPhase section */
 
 /* Begin PBXSourcesBuildPhase section */
 		F7E50F631C51CD5B5DC0BC43 /* Compile Sources */ = {
@@ -364,14 +298,6 @@
 			runOnlyForDeploymentPostprocessing = 0;
 		};
 /* End PBXSourcesBuildPhase section */
-
-/* Begin PBXTargetDependency section */
-		21943CFDF1BD7BBC68FECDFC /* PBXTargetDependency */ = {
-			isa = PBXTargetDependency;
-			target = 62E4A782DAB8BF7AE7D0E9C3 /* Qt Preprocess */;
-			targetProxy = AB19AC5A2E08879F00E961DC /* PBXContainerItemProxy */;
-		};
-/* End PBXTargetDependency section */
 
 /* Begin XCBuildConfiguration section */
 		339EE1B2CC4FC24589A0EA95 /* Release */ = {
@@ -609,7 +535,7 @@
 /* End XCBuildConfiguration section */
 
 /* Begin XCConfigurationList section */
-		6CC3B5D2136C7CD6A5CF5A59 /* Build configuration list for PBXNativeTarget "OriginSimulator" */ = {
+		6CC3B5D2136C7CD6A5CF5A59 /* Build configuration list */ = {
 			isa = XCConfigurationList;
 			buildConfigurations = (
 				77418F46922677BB04ED38DD /* Debug */,

@@ -242,7 +242,7 @@ int WebSocketConnection::processFrame(const QByteArray &data) {
     
     switch (opcode) {
         case 0x01: // Text frame
-//             qDebug() << "TEXT FRAME received:" << QString::fromUtf8(payload).left(100);
+            qDebug() << "TEXT FRAME received:" << QString::fromUtf8(payload);
             emit textMessageReceived(QString::fromUtf8(payload));
             break;
             
@@ -285,7 +285,7 @@ int WebSocketConnection::processFrame(const QByteArray &data) {
             break;
             
         default:
-//             qDebug() << "Unknown WebSocket frame opcode:" << QString("0x%1").arg(opcode, 2, 16, QChar('0'));
+            qDebug() << "Unknown WebSocket frame opcode:" << QString("0x%1").arg(opcode, 2, 16, QChar('0'));
             break;
     }
     
