@@ -59,7 +59,7 @@ public:
     bool recalibrating = false;
     
     // Image data (real values from session1.pcapng with realistic progression)
-    QString fileLocation = "Images/Temp/0.jpg";
+    QString fileLocation = "";
     QString imageType = "LIVE";
     double dec = 0;     // Real Dec from capture
     double ra = 0;      // Will be calculated based on time
@@ -91,7 +91,7 @@ public:
     QString versionString = "1.1.4248\n (C++ = 09-04-2024 18:19, Java = 09-04-2024 18:19)";
     
     // Image sequence (realistic cycling)
-    int sequenceNumber = 8;  // Start at 8 like real data
+    int sequenceNumber = 0;
     int imageCounter = 0;
     
     // Commands being executed

@@ -118,7 +118,7 @@ void ProperHipsClient::setupSurveys() {
         "Digital Sky Survey 2 Color - proven 100% success",
         true, 11, {"full_sky"}
     };
-    
+/*
     m_surveys["2MASS_Color"] = {
         "2MASS Color",
         "http://alasky.u-strasbg.fr/2MASS/Color", 
@@ -176,6 +176,7 @@ void ProperHipsClient::setupSurveys() {
         "Rubin Observatory Virgo Cluster",
         true, 12, {"virgo_cluster"}
     };
+ */
 }
 
 void ProperHipsClient::setupTestPositions() {

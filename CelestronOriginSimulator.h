@@ -14,6 +14,7 @@
 #include "CommandHandler.h"
 #include "StatusSender.h"
 #include "ProperHipsClient.h"  // Changed from RubinHipsClient
+#include "EnhancedMosaicCreator.h"
 
 // Constants
 const QString SERVER_NAME = "CelestronOriginSimulator";
@@ -58,6 +59,7 @@ private:
     CommandHandler *m_commandHandler;
     StatusSender *m_statusSender;
     ProperHipsClient* m_hipsClient;  // Changed from m_rubinClient
+    QByteArray m_imageData;
 
     // WebSocket management
     QList<WebSocketConnection*> m_webSocketClients;
@@ -70,6 +72,10 @@ private:
     QTimer *m_imagingTimer;
     QTimer *m_connectionHealthTimer;
     QTimer *m_initTimer;
+
+    EnhancedMosaicCreator* m_mosaicCreator;
+    bool m_mosaicInProgress;
+
     int m_initUpdateCount = 0;
 
     int broadcast_id = qrand() % 90 + 10;
@@ -105,6 +111,9 @@ private:
     // HiPS image management
     void fetchHipsImagesForPosition(const SkyPosition& position);
     QString getBestAvailableSurvey() const;
+    void generateCurrentSkyImage();
+    void onMosaicComplete(const QImage& mosaic);
+    void addTelescopeOverlay(QPainter& painter, const QImage& image);
 };
 
 #endif // CELESTRONORIGINSIMULATOR_H
