@@ -51,9 +51,6 @@ CelestronOriginSimulator::CelestronOriginSimulator(QObject *parent) : QObject(pa
         setupConnections();
         setupTimers();
         
-        // Ensure temp directory exists
-        QDir().mkpath("simulator_data/Images/Temp");
-        
         // First broadcast immediately
         QTimer::singleShot(100, this, &CelestronOriginSimulator::sendBroadcast);
     } else {
@@ -155,10 +152,6 @@ void CelestronOriginSimulator::onHipsImageReady(const QString& filename) {
     m_telescopeState->imageType = "HIPS_IMAGE";
     m_telescopeState->sequenceNumber++;
 
-    // Also create live view integration
-//    QString tempDir = QDir::homePath() + "/Library/Application Support/OriginSimulator/Images/Temp";
-//    QString liveViewPath = QDir(tempDir).absoluteFilePath("hips_live.jpg");
-    
     // Notify all connected clients about the new image
     m_statusSender->sendNewImageReadyToAll();
     
@@ -582,30 +575,7 @@ void CelestronOriginSimulator::handleWebSocketUpgrade(QTcpSocket *socket, const 
 void CelestronOriginSimulator::handleHttpImageRequest(QTcpSocket *socket, const QString &path) {
 //     qDebug() << "Handling HTTP image request for path:" << path;
 
-    // Extract filename from path: /SmartScope-1.0/dev2/Images/Temp/0.jpg -> 0.jpg
-    QString fileName = path.split("/").last();
-
-    // Remove any query parameters if present
-    if (fileName.contains("?")) {
-        fileName = fileName.split("?").first();
-    }
-
-//     qDebug() << "Extracted filename:" << fileName;
-
-//    QByteArray imageData = imageFile.readAll();
-//    imageFile.close();
-
-    // Determine content type
-    QString contentType = "image/jpeg";
-    if (fileName.endsWith(".png", Qt::CaseInsensitive)) {
-        contentType = "image/png";
-    } else if (fileName.endsWith(".tiff", Qt::CaseInsensitive) || fileName.endsWith(".tif", Qt::CaseInsensitive)) {
-        contentType = "image/tiff";
-    }
-
-//     qDebug() << "Serving image:" << fileName << "(" << imageData.size() << "bytes) with content-type:" << contentType;
-
-    sendHttpResponse(socket, 200, contentType, m_imageData);
+    sendHttpResponse(socket, 200, "image/jpeg", m_imageData);
 }
 
 void CelestronOriginSimulator::handleHttpAstroImageRequest(QTcpSocket *socket, const QString &path) {

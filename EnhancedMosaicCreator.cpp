@@ -8,7 +8,8 @@ EnhancedMosaicCreator::EnhancedMosaicCreator(QObject *parent)  // CHANGED: QObje
     m_networkManager = new QNetworkAccessManager(this);
     m_currentTileIndex = 0;
     
-    m_outputDir = "enhanced_mosaics";
+    QString homeDir = QDir::homePath();
+    m_outputDir = QDir(homeDir).absoluteFilePath("Library/Application Support/OriginSimulator/Images/mosaics");
     QDir().mkpath(m_outputDir);
     
     qDebug() << "=== Enhanced Mosaic Creator - Headless Mode ===";
