@@ -103,6 +103,10 @@ void EnhancedMosaicCreator::processNextTile() {
     
     SimpleTile& tile = m_tiles[m_currentTileIndex];
     if (checkExistingTile(tile)) {
+        qDebug() << QString("Reusing tile %1/%2: Grid(%3,%4) HEALPix %5")
+                    .arg(m_currentTileIndex).arg(m_tiles.size())
+                    .arg(tile.gridX).arg(tile.gridY)
+                    .arg(tile.healpixPixel);
         m_currentTileIndex++;
         QTimer::singleShot(100, this, &EnhancedMosaicCreator::processNextTile);
         return;
