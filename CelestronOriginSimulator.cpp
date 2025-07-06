@@ -11,6 +11,19 @@
 #include <QDebug>
 #include <QPainter>
 #include <cmath>
+#include "CelestronOriginSimulator.h"
+#include <QApplication>
+#include <QJsonDocument>
+#include <QJsonObject>
+#include <QDateTime>
+#include <QNetworkInterface>
+#include <QDir>
+#include <QFile>
+#include <QBuffer>
+#include <QImage>
+#include <QDebug>
+#include <QPainter>
+#include <cmath>
 
 CelestronOriginSimulator::CelestronOriginSimulator(QObject *parent) : QObject(parent) {
     // Initialize core components
@@ -22,24 +35,19 @@ CelestronOriginSimulator::CelestronOriginSimulator(QObject *parent) : QObject(pa
     m_tcpServer = new QTcpServer(this);
     m_udpSocket = new QUdpSocket(this);
 
-    setupRubinIntegration();
+    setupHipsIntegration();  // Changed from setupRubinIntegration
     
     if (m_tcpServer->listen(QHostAddress::Any, SERVER_PORT)) {
-//         qDebug() << "Origin simulator listening on port" << SERVER_PORT;
-//         qDebug() << "WebSocket: ws://localhost/SmartScope-1.0/mountControlEndpoint";
-//         qDebug() << "HTTP Images: http://localhost/SmartScope-1.0/dev2/Images/Temp/";
-        
         setupConnections();
         setupTimers();
         
-        // Ensure temp directory exists and create dummy images
+        // Ensure temp directory exists
         QDir().mkpath("simulator_data/Images/Temp");
-        // createDummyImages();
         
         // First broadcast immediately
         QTimer::singleShot(100, this, &CelestronOriginSimulator::sendBroadcast);
     } else {
-//         qDebug() << "Failed to start Origin simulator:" << m_tcpServer->errorString();
+        qDebug() << "Failed to start Origin simulator:" << m_tcpServer->errorString();
     }
 }
 
@@ -50,109 +58,150 @@ CelestronOriginSimulator::~CelestronOriginSimulator() {
     qDeleteAll(m_webSocketClients);
 }
 
-
-void CelestronOriginSimulator::setupRubinIntegration() {
-    m_rubinClient = new RubinHipsClient(this);
+void CelestronOriginSimulator::setupHipsIntegration() {
+    m_hipsClient = new ProperHipsClient(this);
     
-    // Set up Rubin image directory to integrate with existing simulator structure
+    // Set up HiPS image directory to integrate with existing simulator structure
     QString homeDir = QDir::homePath();
     QString appSupportDir = QDir(homeDir).absoluteFilePath("Library/Application Support/OriginSimulator");
-    QString rubinDir = QDir(appSupportDir).absoluteFilePath("Images/Rubin");
-    m_rubinClient->setImageDirectory(rubinDir);
- 
-    // Connect Rubin client callbacks to telescope behavior (using lambdas instead of signals/slots)
-    m_rubinClient->onImageReady = [this](const QString& filename) {
-        onRubinImageReady(filename);
-    };
+    QString hipsDir = QDir(appSupportDir).absoluteFilePath("Images/HiPS");
     
-    m_rubinClient->onTilesAvailable = [this](const QStringList& filenames) {
-        onRubinTilesAvailable(filenames);
-    };
+    // Create the HiPS directory
+    QDir().mkpath(hipsDir);
     
-    m_rubinClient->onFetchError = [this](const QString& error_message) {
-        onRubinFetchError(error_message);
-    };
+    // Connect ProperHipsClient signals to our slots
+    connect(m_hipsClient, &ProperHipsClient::testingComplete, 
+            this, &CelestronOriginSimulator::onHipsTestingComplete);
     
-    m_rubinClient->onTilesFetched = [this](int successful, int total) {
-//         qDebug() << "Rubin fetch complete:" << successful << "/" << total << "tiles";
-    };
-    
-    m_rubinClient->onFetchProgress = [this](int completed, int total) {
-//         qDebug() << "Rubin fetch progress:" << completed << "/" << total;
-    };
-        
-        qDebug() << "Rubin Observatory integration initialized";
-//     qDebug() << "Rubin images will be saved to:" << rubinDir;
+    qDebug() << "ProperHips integration initialized";
+    qDebug() << "HiPS images will be saved to:" << hipsDir;
 
+    // Set initial coordinates
     m_telescopeState->ra = m_telescopeState->baseRA;
     m_telescopeState->dec = m_telescopeState->baseDec;
 
-	m_rubinClient->fetchTilesForCurrentPointing(m_telescopeState);
+    // Start with initial position fetch
+    SkyPosition initialPos = {
+        m_telescopeState->ra * 180.0 / M_PI,
+        m_telescopeState->dec * 180.0 / M_PI,
+        "Initial_Position",
+        "Telescope starting position"
+    };
+    
+    fetchHipsImagesForPosition(initialPos);
 }
 
-// Add these new slot methods to CelestronOriginSimulator.cpp:
+void CelestronOriginSimulator::fetchHipsImagesForPosition(const SkyPosition& position) {
+    qDebug() << QString("Fetching HiPS images for position: RA=%1°, Dec=%2°")
+                .arg(position.ra_deg, 0, 'f', 6)
+                .arg(position.dec_deg, 0, 'f', 6);
+    
+    // Use the best available survey
+    QString bestSurvey = getBestAvailableSurvey();
+    if (bestSurvey.isEmpty()) {
+        qDebug() << "No working surveys available";
+        return;
+    }
+    
+    // Test the survey at this position
+    m_hipsClient->testSurveyAtPosition(bestSurvey, position);
+}
 
-void CelestronOriginSimulator::onRubinImageReady(const QString& filename) {
-        qDebug() << "Rubin Observatory image ready:" << filename;
+QString CelestronOriginSimulator::getBestAvailableSurvey() const {
+    // Get working surveys from previous tests, or use defaults
+    QStringList workingSurveys = m_hipsClient->getWorkingSurveys();
+    
+    if (workingSurveys.isEmpty()) {
+        // Default to known working surveys
+        QStringList defaultSurveys = {"DSS2_Color", "2MASS_Color", "2MASS_J"};
+        return defaultSurveys.first();
+    }
+    
+    // Prefer color surveys over single-band
+    QStringList preferredOrder = {"DSS2_Color", "2MASS_Color", "Mellinger_Color", 
+                                  "2MASS_J", "DSS2_Red", "Gaia_DR3"};
+    
+    for (const QString& preferred : preferredOrder) {
+        if (workingSurveys.contains(preferred)) {
+            return preferred;
+        }
+    }
+    
+    return workingSurveys.first();
+}
+
+// Slot implementations for HiPS integration
+void CelestronOriginSimulator::onHipsImageReady(const QString& filename) {
+    qDebug() << "HiPS Observatory image ready:" << filename;
     
     // Extract just the filename for the telescope's image system
     QFileInfo fileInfo(filename);
-    QString relativePath = QString("Images/Rubin/%1").arg(fileInfo.fileName());
+    QString relativePath = QString("Images/HiPS/%1").arg(fileInfo.fileName());
     
     // Update telescope state with new image location
     m_telescopeState->fileLocation = relativePath;
-    m_telescopeState->imageType = "RUBIN_HIPS";
+    m_telescopeState->imageType = "HIPS_IMAGE";
     m_telescopeState->sequenceNumber++;
 
-    // NEW: Also create live view integration
+    // Also create live view integration
     QString tempDir = QDir::homePath() + "/Library/Application Support/OriginSimulator/Images/Temp";
-    QString liveViewPath = tempDir + "/rubin_live.jpg";
+    QString liveViewPath = QDir(tempDir).absoluteFilePath("hips_live.jpg");
     
-    // Check if Rubin created a live view
+    // Check if HiPS created a live view
     if (QFile::exists(liveViewPath)) {
-        // Copy Rubin live view to current telescope view
-        QString currentLive = tempDir + QString("/%1.jpg").arg(m_telescopeState->sequenceNumber % 10);
+        // Copy HiPS live view to current telescope view
+        QString currentLive = QDir(tempDir).absoluteFilePath(QString("%1.jpg").arg(m_telescopeState->sequenceNumber % 10));
         QFile::copy(liveViewPath, currentLive);
         
         m_telescopeState->fileLocation = QString("Images/Temp/%1.jpg").arg(m_telescopeState->sequenceNumber % 10);
-        m_telescopeState->imageType = "LIVE_RUBIN";
+        m_telescopeState->imageType = "LIVE_HIPS";
     }
         
     // Notify all connected clients about the new image
     m_statusSender->sendNewImageReadyToAll();
     
-        qDebug() << "Telescope updated with Rubin image:" << relativePath;
+    qDebug() << "Telescope updated with HiPS image:" << relativePath;
 }
 
-void CelestronOriginSimulator::onRubinTilesAvailable(const QStringList& filenames) {
-        qDebug() << "Rubin Observatory tiles available:" << filenames.size();
+void CelestronOriginSimulator::onHipsTilesAvailable(const QStringList& filenames) {
+    qDebug() << "HiPS Observatory tiles available:" << filenames.size();
     
     if (!filenames.isEmpty()) {
         // Use the first available tile
-        onRubinImageReady(filenames.first());
+        onHipsImageReady(filenames.first());
         
         // Log all available files
         for (const QString& file : filenames) {
             QFileInfo info(file);
-//             qDebug() << "  Available:" << info.fileName() << "(" << info.size() << "bytes)";
+            qDebug() << "  Available:" << info.fileName() << "(" << info.size() << "bytes)";
         }
     }
 }
 
-void CelestronOriginSimulator::onRubinFetchError(const QString& error_message) {
-        qDebug() << "Rubin Observatory fetch error:" << error_message;
+void CelestronOriginSimulator::onHipsFetchError(const QString& error_message) {
+    qDebug() << "HiPS Observatory fetch error:" << error_message;
     
-    // Could send error notification to clients if desired
+    // Send error notification to clients
     QJsonObject errorNotification;
     errorNotification["Command"] = "Warning";
     errorNotification["Destination"] = "All";
-    errorNotification["Source"] = "RubinImageServer";
+    errorNotification["Source"] = "HipsImageServer";
     errorNotification["Type"] = "Notification";
-    errorNotification["Message"] = "Rubin Observatory data unavailable: " + error_message;
+    errorNotification["Message"] = "HiPS Observatory data unavailable: " + error_message;
     errorNotification["ExpiredAt"] = m_telescopeState->getExpiredAt();
     errorNotification["SequenceID"] = m_telescopeState->getNextSequenceId();
     
     m_statusSender->sendJsonMessageToAll(errorNotification);
+}
+
+void CelestronOriginSimulator::onHipsTestingComplete() {
+    qDebug() << "HiPS testing completed";
+    
+    // Print summary of results
+    m_hipsClient->printSummary();
+    
+    // Save results for debugging
+    m_hipsClient->saveResults("hips_test_results.csv");
 }
 
 void CelestronOriginSimulator::setupConnections() {
@@ -177,7 +226,6 @@ void CelestronOriginSimulator::setupConnections() {
             m_initTimer->start(3000); // Update every 3 seconds like real telescope
         }
     });
-    
 }
 
 void CelestronOriginSimulator::setupTimers() {
@@ -203,7 +251,74 @@ void CelestronOriginSimulator::setupTimers() {
     m_initTimer = new QTimer(this);
     m_initTimer->setSingleShot(false);
     connect(m_initTimer, &QTimer::timeout, this, &CelestronOriginSimulator::updateInitialization);
+}
 
+void CelestronOriginSimulator::updateSlew() {
+    static int slewProgress = 0;
+    
+    // Simulate slew progress
+    slewProgress += 20;  // 20% progress per 500ms
+    
+    if (slewProgress >= 100) {
+        qDebug() << "Before update - RA:" << m_telescopeState->ra << "Dec:" << m_telescopeState->dec;
+        qDebug() << "Target RA:" << m_telescopeState->targetRa << "Target Dec:" << m_telescopeState->targetDec;
+        
+        // Slew complete
+        m_telescopeState->isGotoOver = true;
+        m_telescopeState->isSlewing = false;
+        m_telescopeState->baseRA = m_telescopeState->targetRa;
+        m_telescopeState->baseDec = m_telescopeState->targetDec;
+        m_telescopeState->ra = m_telescopeState->baseRA;
+        m_telescopeState->dec = m_telescopeState->baseDec;
+        
+        // Stop the timer
+        m_slewTimer->stop();
+        slewProgress = 0;
+
+        qDebug() << "After update - RA:" << m_telescopeState->ra << "Dec:" << m_telescopeState->dec;
+        
+        // Update mount status
+        m_statusSender->sendMountStatusToAll();
+
+        // Add delay to ensure coordinates are fully updated
+        QTimer::singleShot(100, this, [this]() {
+            if (m_hipsClient) {
+                qDebug() << "🎯 Slew complete - fetching HiPS data for new position";
+                
+                // Convert telescope coordinates to SkyPosition
+                SkyPosition newPos = {
+                    m_telescopeState->targetRa * 180.0 / M_PI,  // Convert radians to degrees
+                    m_telescopeState->targetDec * 180.0 / M_PI,
+                    "Slew_Target",
+                    "Position after telescope slew"
+                };
+                
+                qDebug() << "🎯 Using target coordinates for HiPS fetch - RA:" << newPos.ra_deg << "Dec:" << newPos.dec_deg;
+                fetchHipsImagesForPosition(newPos);
+            }
+        });
+        
+        qDebug() << "🎯 Slew complete";
+    }
+}
+
+void CelestronOriginSimulator::updateImaging() {
+    // Decrement imaging time
+    m_telescopeState->imagingTimeLeft--;
+
+    // ADD IMAGE GENERATION HERE:
+    generateCurrentSkyImage();  // <-- Generate new image based on current RA/Dec
+
+    // Send a new image notification
+    m_statusSender->sendNewImageReadyToAll();
+    
+    if (m_telescopeState->imagingTimeLeft <= 0) {
+        // Imaging complete
+        m_telescopeState->isImaging = false;
+        m_imagingTimer->stop();
+        
+        qDebug() << "Imaging complete";
+    }
 }
 
 void CelestronOriginSimulator::updateInitialization() {
@@ -216,7 +331,6 @@ void CelestronOriginSimulator::updateInitialization() {
     // After several updates, set focus position (matches real telescope behavior)
     if (m_initUpdateCount == 5) {
         m_telescopeState->initInfo.positionOfFocus = 18617; // Use value from real trace
-//         qDebug() << "Initialization found focus position:" << m_telescopeState->initInfo.positionOfFocus;
     }
     
     // After more updates, find first alignment point
@@ -224,7 +338,6 @@ void CelestronOriginSimulator::updateInitialization() {
         m_telescopeState->initInfo.numPoints = 1;
         m_telescopeState->initInfo.numPointsRemaining = 1;
         m_telescopeState->initInfo.percentComplete = 50;
-//         qDebug() << "Initialization found first alignment point";
     }
     
     // Randomly decide if initialization fails (about 50% chance like real telescope)
@@ -259,7 +372,6 @@ void CelestronOriginSimulator::completeInitialization() {
     QTimer::singleShot(1000, this, [this]() {
         m_telescopeState->state = "IDLE";
         m_statusSender->sendTaskControllerStatusToAll();
-//         qDebug() << "Initialization complete - telescope ready";
     });
 }
 
@@ -285,10 +397,9 @@ void CelestronOriginSimulator::failInitialization() {
     
     // Send failure status
     m_statusSender->sendTaskControllerStatusToAll();
-    
-//     qDebug() << "Initialization failed with error -78";
 }
 
+// Rest of the existing methods remain the same...
 void CelestronOriginSimulator::handleNewConnection() {
     QTcpSocket *socket = m_tcpServer->nextPendingConnection();
     
@@ -305,6 +416,32 @@ void CelestronOriginSimulator::handleNewConnection() {
         socket->deleteLater();
     });
 }
+
+// Include the rest of your existing methods here...
+// (handleIncomingData, handleWebSocketUpgrade, etc.)
+// They remain unchanged from your original implementation
+
+void CelestronOriginSimulator::sendBroadcast() {
+    // Prepare the broadcast message
+    QString message = QString("Identity:Origin-") + QLatin1String(std::to_string(broadcast_id)) + QString("Z Origin IP Address = %1");
+    
+    // Get our IP addresses
+    QList<QHostAddress> ipAddresses = QNetworkInterface::allAddresses();
+    
+    for (const QHostAddress &address : ipAddresses) {
+        if (address.protocol() == QAbstractSocket::IPv4Protocol && address != QHostAddress::LocalHost) {
+            QString broadcastMessage = message.arg(address.toString());
+            
+            // Send broadcast on all network interfaces
+            m_udpSocket->writeDatagram(
+                broadcastMessage.toUtf8(),
+                QHostAddress::Broadcast,
+                BROADCAST_PORT
+            );
+        }
+    }
+}
+
 
 void CelestronOriginSimulator::handleIncomingData(QTcpSocket *socket) {
     QByteArray newData = socket->readAll();
@@ -627,90 +764,6 @@ void CelestronOriginSimulator::onWebSocketDisconnected() {
     }
 }
 
-void CelestronOriginSimulator::sendBroadcast() {
-    // Prepare the broadcast message
-  QString message = QString("Identity:Origin-") + QLatin1String (std::to_string(broadcast_id)) + QString("Z Origin IP Address = %1");
-    
-    // Get our IP addresses
-    QList<QHostAddress> ipAddresses = QNetworkInterface::allAddresses();
-    
-    for (const QHostAddress &address : ipAddresses) {
-        if (address.protocol() == QAbstractSocket::IPv4Protocol && address != QHostAddress::LocalHost) {
-            QString broadcastMessage = message.arg(address.toString());
-            
-            // Send broadcast on all network interfaces
-            m_udpSocket->writeDatagram(
-                broadcastMessage.toUtf8(),
-                QHostAddress::Broadcast,
-                BROADCAST_PORT
-            );
-            
-//             qDebug() << "Sent broadcast:" << broadcastMessage;
-        }
-    }
-}
-
-void CelestronOriginSimulator::updateSlew() {
-    static int slewProgress = 0;
-    
-    // Simulate slew progress
-    slewProgress += 20;  // 20% progress per 500ms
-    
-    if (slewProgress >= 100) {
-        // ADD THESE DEBUG LINES BEFORE COORDINATE UPDATE:
-//         // qDebug() << "*** SLEW COMPLETING ***";
-        qDebug() << "Before update - RA:" << m_telescopeState->ra << "Dec:" << m_telescopeState->dec;
-        qDebug() << "Target RA:" << m_telescopeState->targetRa << "Target Dec:" << m_telescopeState->targetDec;
-        
-        // Slew complete
-        m_telescopeState->isGotoOver = true;
-        m_telescopeState->isSlewing = false;
-        m_telescopeState->baseRA = m_telescopeState->targetRa;
-        m_telescopeState->baseDec = m_telescopeState->targetDec;
-        m_telescopeState->ra = m_telescopeState->baseRA;
-        m_telescopeState->dec = m_telescopeState->baseDec;
-        
-        // Stop the timer
-        m_slewTimer->stop();
-        slewProgress = 0;
-
-        qDebug() << "After update - RA:" << m_telescopeState->ra << "Dec:" << m_telescopeState->dec;
-		
-        // Update mount status
-        m_statusSender->sendMountStatusToAll();
-
-	// Add delay to ensure coordinates are fully updated
-	QTimer::singleShot(100, this, [this]() {
-	    if (m_rubinClient) {
-        qDebug() << "🎯 Slew complete - fetching Rubin Observatory data for new position";
-		// Use target coordinates directly to avoid race condition
-        TelescopeState tempState = *m_telescopeState;
-        tempState.ra = m_telescopeState->targetRa;
-        tempState.dec = m_telescopeState->targetDec;
-        qDebug() << "🎯 Using target coordinates for Rubin fetch - RA:" << tempState.ra << "Dec:" << tempState.dec;
-        m_rubinClient->fetchTilesForCurrentPointing(&tempState);
-	    }
-	});
-        
-        qDebug() << "🎯 Slew complete";
-    }
-}
-
-void CelestronOriginSimulator::updateImaging() {
-    // Decrement imaging time
-    m_telescopeState->imagingTimeLeft--;
-    
-    // Send a new image notification
-    m_statusSender->sendNewImageReadyToAll();
-    
-    if (m_telescopeState->imagingTimeLeft <= 0) {
-        // Imaging complete
-        m_telescopeState->isImaging = false;
-        m_imagingTimer->stop();
-        
-//         qDebug() << "Imaging complete";
-    }
-}
 
 // Enhanced image creation method using macOS Application Support directory
 // Replace the createDummyImages method with this version:

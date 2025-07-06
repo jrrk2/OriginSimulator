@@ -13,7 +13,7 @@
 #include "WebSocketConnection.h"
 #include "CommandHandler.h"
 #include "StatusSender.h"
-#include "RubinHipsClient.h"
+#include "ProperHipsClient.h"  // Changed from RubinHipsClient
 
 // Constants
 const QString SERVER_NAME = "CelestronOriginSimulator";
@@ -40,13 +40,15 @@ private slots:
     void onWebSocketDisconnected();
     void processWebSocketCommand(const QString &message);
     void handleWebSocketPing(const QByteArray &payload);
-    void handleWebSocketPong(const QByteArray &payload);  // NEW
-    void handleWebSocketTimeout();                        // NEW
-    void checkConnectionHealth();                         // NEW
-    // Rubin Observatory integration slots
-    void onRubinImageReady(const QString& filename);
-    void onRubinTilesAvailable(const QStringList& filenames);
-    void onRubinFetchError(const QString& error_message);
+    void handleWebSocketPong(const QByteArray &payload);
+    void handleWebSocketTimeout();
+    void checkConnectionHealth();
+    
+    // ProperHips integration slots (renamed from Rubin)
+    void onHipsImageReady(const QString& filename);
+    void onHipsTilesAvailable(const QStringList& filenames);
+    void onHipsFetchError(const QString& error_message);
+    void onHipsTestingComplete();
 
 private:
     // Core components
@@ -55,7 +57,7 @@ private:
     TelescopeState *m_telescopeState;
     CommandHandler *m_commandHandler;
     StatusSender *m_statusSender;
-    RubinHipsClient* m_rubinClient;
+    ProperHipsClient* m_hipsClient;  // Changed from m_rubinClient
 
     // WebSocket management
     QList<WebSocketConnection*> m_webSocketClients;
@@ -67,19 +69,18 @@ private:
     QTimer *m_slewTimer;
     QTimer *m_imagingTimer;
     QTimer *m_connectionHealthTimer;
-    // Add initialization timer
     QTimer *m_initTimer;
-    int m_initUpdateCount = 0;  // Add this to track initialization progress
+    int m_initUpdateCount = 0;
 
     int broadcast_id = qrand() % 90 + 10;
   
-    // Add initialization methods
+    // Initialization methods
     void setupInitialization();
     void updateInitialization();
     void completeInitialization();
     void failInitialization();
 
-    // Absolute paths for image serving (NEW)
+    // Absolute paths for image serving
     QString m_absoluteTempDir;
     QString m_absoluteAstroDir;
     
@@ -96,11 +97,14 @@ private:
     void createDummyImagesOld();
     void setupTimers();
     void setupConnections();
-    void printRuntimeInfo();                    // NEW
-    void openSimulatorDirectoryInFinder();      // NEW
-    void cleanupApplicationSupportFiles();      // NEW
-    void setupRubinIntegration();
-
+    void printRuntimeInfo();
+    void openSimulatorDirectoryInFinder();
+    void cleanupApplicationSupportFiles();
+    void setupHipsIntegration();  // Renamed from setupRubinIntegration
+    
+    // HiPS image management
+    void fetchHipsImagesForPosition(const SkyPosition& position);
+    QString getBestAvailableSurvey() const;
 };
 
 #endif // CELESTRONORIGINSIMULATOR_H
