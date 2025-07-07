@@ -7,8 +7,6 @@
 *****************************************************************************/
 
 #include "CelestronOriginSimulator.h"
-#include <QtNetwork/QSslError>
-#include <QtGui/qtextcursor.h>
 #include <QtCore/qmetatype.h>
 
 #include <QtCore/qtmochelpers.h>
@@ -156,18 +154,6 @@ void CelestronOriginSimulator::qt_static_metacall(QObject *_o, QMetaObject::Call
         default: ;
         }
     }
-    if (_c == QMetaObject::RegisterMethodArgumentMetaType) {
-        switch (_id) {
-        default: *reinterpret_cast<QMetaType *>(_a[0]) = QMetaType(); break;
-        case 1:
-            switch (*reinterpret_cast<int*>(_a[1])) {
-            default: *reinterpret_cast<QMetaType *>(_a[0]) = QMetaType(); break;
-            case 0:
-                *reinterpret_cast<QMetaType *>(_a[0]) = QMetaType::fromType< QTcpSocket* >(); break;
-            }
-            break;
-        }
-    }
 }
 
 const QMetaObject *CelestronOriginSimulator::metaObject() const
@@ -195,7 +181,7 @@ int CelestronOriginSimulator::qt_metacall(QMetaObject::Call _c, int _id, void **
     }
     if (_c == QMetaObject::RegisterMethodArgumentMetaType) {
         if (_id < 16)
-            qt_static_metacall(this, _c, _id, _a);
+            *reinterpret_cast<QMetaType *>(_a[0]) = QMetaType();
         _id -= 16;
     }
     return _id;

@@ -4,3 +4,4 @@
 .qmake.stash
 .xcode/
 Debug/
+Release/
