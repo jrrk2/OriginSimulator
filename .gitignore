@@ -1,5 +1,6 @@
 *~
 *.xcodeproj
+*.csv
 .DS_Store
 .qmake.stash
 .xcode/
