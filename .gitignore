@@ -6,3 +6,4 @@
 .xcode/
 Debug/
 Release/
+build/
