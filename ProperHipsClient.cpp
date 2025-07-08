@@ -56,18 +56,18 @@ QMap<QString, long long> ProperHipsClient::getDirectionalNeighbors(long long cen
         // manual based on M51 QStringList directions = {"N", "NE", "E", "SW", "SE", "S", "NW", "W"};
 	QStringList directions = {"S", "SE", "E", "NE", "N", "NW", "W", "SW"};
         
-        qDebug() << "Directional neighbors for pixel" << centerPixel << ":";
+        if (false) qDebug() << "Directional neighbors for pixel" << centerPixel << ":";
         for (int i = 0; i < 8; i++) {
             if (neighborArray[i] >= 0) {
                 directionalNeighbors[directions[i]] = neighborArray[i];
-                qDebug() << QString("  %1: %2").arg(directions[i]).arg(neighborArray[i]);
+                if (false) qDebug() << QString("  %1: %2").arg(directions[i]).arg(neighborArray[i]);
             } else {
-                qDebug() << QString("  %1: NO NEIGHBOR").arg(directions[i]);
+                if (false) qDebug() << QString("  %1: NO NEIGHBOR").arg(directions[i]);
             }
         }
         
     } catch (const std::exception& e) {
-        qDebug() << "HEALPix directional neighbors error:" << e.what();
+        if (false) qDebug() << "HEALPix directional neighbors error:" << e.what();
     }
     
     return directionalNeighbors;
@@ -105,8 +105,8 @@ ProperHipsClient::ProperHipsClient(QObject *parent)
     setupSurveys();
     setupTestPositions();
     
-    qDebug() << "ProperHipsClient initialized with real HEALPix library";
-    qDebug() << "Available surveys:" << m_surveys.keys();
+    if (false) qDebug() << "ProperHipsClient initialized with real HEALPix library";
+    if (false) qDebug() << "Available surveys:" << m_surveys.keys();
 }
 
 void ProperHipsClient::setupSurveys() {
@@ -198,7 +198,7 @@ void ProperHipsClient::setupTestPositions() {
 }
 
 void ProperHipsClient::testPixelCalculation() {
-    qDebug() << "=== Testing Real HEALPix Pixel Calculation ===";
+    if (false) qDebug() << "=== Testing Real HEALPix Pixel Calculation ===";
     
     SkyPosition orion = {83.0, -5.4, "Orion", "Test position"};
     
@@ -208,15 +208,15 @@ void ProperHipsClient::testPixelCalculation() {
         long long simplePixel = calculateSimplePixel(orion.ra_deg, orion.dec_deg, order);
         long long nside = 1LL << order;
         
-        qDebug() << QString("Order %1: nside=%2, real_pixel=%3, simple_pixel=%4, diff=%5")
+        if (false) qDebug() << QString("Order %1: nside=%2, real_pixel=%3, simple_pixel=%4, diff=%5")
                     .arg(order).arg(nside).arg(realPixel).arg(simplePixel).arg(realPixel - simplePixel);
         
         // Build test URLs for DSS (known working survey)
         QString realUrl = buildDSSUrl(orion, order, "DSS2_Color");
-        qDebug() << "  Real HEALPix URL:" << realUrl;
+        if (false) qDebug() << "  Real HEALPix URL:" << realUrl;
     }
     
-    qDebug() << "\nThis shows the difference between simple and real HEALPix calculations!";
+    if (false) qDebug() << "\nThis shows the difference between simple and real HEALPix calculations!";
 }
 
 long long ProperHipsClient::calculateHealPixel(const SkyPosition& position, int order) const {
@@ -229,7 +229,7 @@ long long ProperHipsClient::calculateHealPixel(const SkyPosition& position, int 
         
         return pixel;
     } catch (const std::exception& e) {
-        qDebug() << "HEALPix error:" << e.what();
+        if (false) qDebug() << "HEALPix error:" << e.what();
         return -1;
     }
 }
@@ -320,9 +320,9 @@ QString ProperHipsClient::buildTileUrl(const QString& surveyName, const SkyPosit
 }
 
 void ProperHipsClient::testAllSurveys() {
-    qDebug() << "=== Testing All Surveys with Real HEALPix ===";
-    qDebug() << "Surveys:" << m_surveys.keys();
-    qDebug() << "Positions:" << m_testPositions.size();
+    if (false) qDebug() << "=== Testing All Surveys with Real HEALPix ===";
+    if (false) qDebug() << "Surveys:" << m_surveys.keys();
+    if (false) qDebug() << "Positions:" << m_testPositions.size();
     
     m_results.clear();
     m_currentSurveyIndex = 0;
@@ -344,7 +344,7 @@ void ProperHipsClient::startNextTest() {
     QString url = buildTileUrl(surveyName, position, 6);  // Test with order 6
     
     if (url.isEmpty()) {
-        qDebug() << "✗ Failed to build URL for" << surveyName << "@" << position.name;
+        if (false) qDebug() << "✗ Failed to build URL for" << surveyName << "@" << position.name;
         
         // Record failure
         TileResult result;
@@ -362,8 +362,8 @@ void ProperHipsClient::startNextTest() {
         return;
     }
     
-    qDebug() << QString("Testing %1 @ %2").arg(surveyName).arg(position.name);
-    qDebug() << "  URL:" << url;
+    if (false) qDebug() << QString("Testing %1 @ %2").arg(surveyName).arg(position.name);
+    if (false) qDebug() << "  URL:" << url;
     
     // Start download test
     QUrl targetUrl(url);
@@ -389,12 +389,12 @@ void ProperHipsClient::startNextTest() {
 void ProperHipsClient::testSurveyAtPosition(const QString& surveyName, const SkyPosition& position) {
     QString url = buildTileUrl(surveyName, position, 6);
     if (url.isEmpty()) {
-        qDebug() << "Failed to build URL for" << surveyName << "at" << position.name;
+        if (false) qDebug() << "Failed to build URL for" << surveyName << "at" << position.name;
         return;
     }
     
-    qDebug() << "Testing" << surveyName << "at" << position.name;
-    qDebug() << "URL:" << url;
+    if (false) qDebug() << "Testing" << surveyName << "at" << position.name;
+    if (false) qDebug() << "URL:" << url;
     
     // Start download test
     QUrl targetUrl(url);
@@ -444,7 +444,7 @@ void ProperHipsClient::onReplyFinished() {
     
     // Print immediate result
     QString status = result.success ? "✓" : "✗";
-    qDebug() << QString("  %1 %2ms, %3 bytes, HTTP %4, pixel %5")
+    if (false) qDebug() << QString("  %1 %2ms, %3 bytes, HTTP %4, pixel %5")
                 .arg(status)
                 .arg(result.downloadTime)
                 .arg(result.fileSize)
@@ -470,17 +470,17 @@ void ProperHipsClient::moveToNextTest() {
 }
 
 void ProperHipsClient::finishTesting() {
-    qDebug() << "\n=== Testing Complete ===";
+    if (false) qDebug() << "\n=== Testing Complete ===";
     printSummary();
     saveResults("proper_hips_results.csv");
     
     // Don't quit the application here - let the caller decide
-    qDebug() << "Testing finished. Results saved.";
+    if (false) qDebug() << "Testing finished. Results saved.";
     emit testingComplete();
 }
 
 void ProperHipsClient::printSummary() const {
-    qDebug() << "\n=== PROPER HiPS RESULTS SUMMARY ===";
+    if (false) qDebug() << "\n=== PROPER HiPS RESULTS SUMMARY ===";
     
     // Group results by survey
     QMap<QString, QList<TileResult>> surveyResults;
@@ -488,8 +488,8 @@ void ProperHipsClient::printSummary() const {
         surveyResults[result.survey].append(result);
     }
     
-    qDebug() << QString("%-20s %8s %8s %8s %10s").arg("Survey").arg("Success").arg("Avg Time").arg("Avg Size").arg("Coverage");
-    qDebug() << QString("%-20s %8s %8s %8s %10s").arg("--------").arg("-------").arg("--------").arg("--------").arg("--------");
+    if (false) qDebug() << QString("%-20s %8s %8s %8s %10s").arg("Survey").arg("Success").arg("Avg Time").arg("Avg Size").arg("Coverage");
+    if (false) qDebug() << QString("%-20s %8s %8s %8s %10s").arg("--------").arg("-------").arg("--------").arg("--------").arg("--------");
     
     QStringList bestSurveys;
     
@@ -513,7 +513,7 @@ void ProperHipsClient::printSummary() const {
         double avgTime = successful > 0 ? double(totalTime) / successful : 0;
         double avgSize = successful > 0 ? double(totalSize) / successful : 0;
         
-        qDebug() << QString("%-20s %7.1f%% %7.0fms %7.0fkB %9.1f%%")
+        if (false) qDebug() << QString("%-20s %7.1f%% %7.0fms %7.0fkB %9.1f%%")
                     .arg(survey)
                     .arg(successRate)
                     .arg(avgTime)
@@ -525,32 +525,32 @@ void ProperHipsClient::printSummary() const {
         }
     }
     
-    qDebug() << "\n=== RECOMMENDATIONS ===";
+    if (false) qDebug() << "\n=== RECOMMENDATIONS ===";
     if (!bestSurveys.isEmpty()) {
-        qDebug() << "Best surveys (≥90% success):" << bestSurveys;
+        if (false) qDebug() << "Best surveys (≥90% success):" << bestSurveys;
     } else {
-        qDebug() << "No surveys achieved ≥90% success rate";
+        if (false) qDebug() << "No surveys achieved ≥90% success rate";
     }
     
     // Show pixel calculation comparison
-    qDebug() << "\n=== HEALPix Pixel Comparison ===";
+    if (false) qDebug() << "\n=== HEALPix Pixel Comparison ===";
     if (!m_results.isEmpty()) {
         SkyPosition samplePos = {83.0, -5.4, "Orion", "Sample"};
         
         long long realPixel = calculateHealPixel(samplePos, 6);
         long long simplePixel = calculateSimplePixel(samplePos.ra_deg, samplePos.dec_deg, 6);
         
-        qDebug() << "Real HEALPix pixel for Orion (order 6):" << realPixel;
-        qDebug() << "Simple calculation pixel for Orion (order 6):" << simplePixel;
-        qDebug() << "Difference:" << (realPixel - simplePixel);
-        qDebug() << "This difference explains why some surveys failed before!";
+        if (false) qDebug() << "Real HEALPix pixel for Orion (order 6):" << realPixel;
+        if (false) qDebug() << "Simple calculation pixel for Orion (order 6):" << simplePixel;
+        if (false) qDebug() << "Difference:" << (realPixel - simplePixel);
+        if (false) qDebug() << "This difference explains why some surveys failed before!";
     }
 }
 
 void ProperHipsClient::saveResults(const QString& filename) const {
     QFile file(filename);
     if (!file.open(QIODevice::WriteOnly | QIODevice::Text)) {
-        qDebug() << "Failed to save results to" << filename;
+        if (false) qDebug() << "Failed to save results to" << filename;
         return;
     }
     
@@ -572,7 +572,7 @@ void ProperHipsClient::saveResults(const QString& filename) const {
     }
     
     file.close();
-    qDebug() << "Results saved to:" << filename;
+    if (false) qDebug() << "Results saved to:" << filename;
 }
 
 QStringList ProperHipsClient::getWorkingSurveys() const {

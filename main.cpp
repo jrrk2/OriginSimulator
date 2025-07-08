@@ -7,10 +7,10 @@ int main(int argc, char *argv[]) {
     
     CelestronOriginSimulator simulator;
     
-//     qDebug() << "Celestron Origin Simulator is running...";
-//     qDebug() << "WebSocket endpoint: ws://localhost/SmartScope-1.0/mountControlEndpoint";
-//     qDebug() << "HTTP images: http://localhost/SmartScope-1.0/dev2/Images";
-//     qDebug() << "Press Ctrl+C to exit.";
+//     if (false) qDebug() << "Celestron Origin Simulator is running...";
+//     if (false) qDebug() << "WebSocket endpoint: ws://localhost/SmartScope-1.0/mountControlEndpoint";
+//     if (false) qDebug() << "HTTP images: http://localhost/SmartScope-1.0/dev2/Images";
+//     if (false) qDebug() << "Press Ctrl+C to exit.";
     
     return app.exec();
 }

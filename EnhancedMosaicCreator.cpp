@@ -12,8 +12,8 @@ EnhancedMosaicCreator::EnhancedMosaicCreator(QObject *parent)  // CHANGED: QObje
     m_outputDir = QDir(homeDir).absoluteFilePath("Library/Application Support/OriginSimulator/Images/mosaics");
     QDir().mkpath(m_outputDir);
     
-    qDebug() << "=== Enhanced Mosaic Creator - Headless Mode ===";
-    qDebug() << "Precise coordinate placement with sub-tile accuracy!";
+    if (false) qDebug() << "=== Enhanced Mosaic Creator - Headless Mode ===";
+    if (false) qDebug() << "Precise coordinate placement with sub-tile accuracy!";
 }
 
 // NEW: Public coordinate setter method
@@ -22,12 +22,12 @@ void EnhancedMosaicCreator::setCustomCoordinates(const QString& raText, const QS
         m_customTarget = SimpleCoordinateParser::parseCoordinates(raText, decText, name);
         m_actualTarget = m_customTarget;
         
-        qDebug() << QString("Set coordinates: RA=%1°, Dec=%2°, Name=%3")
+        if (false) qDebug() << QString("Set coordinates: RA=%1°, Dec=%2°, Name=%3")
                     .arg(m_customTarget.ra_deg, 0, 'f', 6)
                     .arg(m_customTarget.dec_deg, 0, 'f', 6)
                     .arg(name);
     } catch (...) {
-        qDebug() << "Failed to parse coordinates:" << raText << decText;
+        if (false) qDebug() << "Failed to parse coordinates:" << raText << decText;
     }
 }
 
@@ -36,15 +36,15 @@ void EnhancedMosaicCreator::createCustomMosaic(const SkyPosition& target) {
     m_customTarget = target;
     m_actualTarget = target;
     
-    qDebug() << QString("\n=== Creating Coordinate-Centered Mosaic for %1 ===").arg(target.name);
+    if (false) qDebug() << QString("\n=== Creating Coordinate-Centered Mosaic for %1 ===").arg(target.name);
     
     // Store the actual target coordinates for precise centering
     createTileGrid(target);
     
-    qDebug() << QString("Target coordinates: RA=%1°, Dec=%2°")
+    if (false) qDebug() << QString("Target coordinates: RA=%1°, Dec=%2°")
                 .arg(m_actualTarget.ra_deg, 0, 'f', 6)
                 .arg(m_actualTarget.dec_deg, 0, 'f', 6);
-    qDebug() << QString("Starting download of %1 tiles...").arg(m_tiles.size());
+    if (false) qDebug() << QString("Starting download of %1 tiles...").arg(m_tiles.size());
     m_currentTileIndex = 0;
     processNextTile();
 }
@@ -56,7 +56,7 @@ void EnhancedMosaicCreator::createTileGrid(const SkyPosition& position) {
     long long centerPixel = m_hipsClient->calculateHealPixel(position, order);
     QList<QList<long long>> grid = m_hipsClient->createProper3x3Grid(centerPixel, order);
     
-    qDebug() << QString("Creating 3×3 tile grid around %1:").arg(position.name);
+    if (false) qDebug() << QString("Creating 3×3 tile grid around %1:").arg(position.name);
     
     for (int y = 0; y < 3; y++) {
         for (int x = 0; x < 3; x++) {
@@ -81,10 +81,10 @@ void EnhancedMosaicCreator::createTileGrid(const SkyPosition& position) {
             double distance = calculateAngularDistance(m_actualTarget, tile.skyCoordinates);
             
             if (tile.healpixPixel == centerPixel) {
-                qDebug() << QString("  Grid(%1,%2): HEALPix %3 ★ NEAREST TILE ★ (%4 arcsec from target)")
+                if (false) qDebug() << QString("  Grid(%1,%2): HEALPix %3 ★ NEAREST TILE ★ (%4 arcsec from target)")
                             .arg(x).arg(y).arg(tile.healpixPixel).arg(distance * 3600.0, 0, 'f', 1);
             } else {
-                qDebug() << QString("  Grid(%1,%2): HEALPix %3 (%4 arcsec from target)")
+                if (false) qDebug() << QString("  Grid(%1,%2): HEALPix %3 (%4 arcsec from target)")
                             .arg(x).arg(y).arg(tile.healpixPixel).arg(distance * 3600.0, 0, 'f', 1);
             }
             
@@ -92,7 +92,7 @@ void EnhancedMosaicCreator::createTileGrid(const SkyPosition& position) {
         }
     }
     
-    qDebug() << QString("Created %1 tile grid - will crop to center target precisely").arg(m_tiles.size());
+    if (false) qDebug() << QString("Created %1 tile grid - will crop to center target precisely").arg(m_tiles.size());
 }
 
 void EnhancedMosaicCreator::processNextTile() {
@@ -103,7 +103,7 @@ void EnhancedMosaicCreator::processNextTile() {
     
     SimpleTile& tile = m_tiles[m_currentTileIndex];
     if (checkExistingTile(tile)) {
-        qDebug() << QString("Reusing tile %1/%2: Grid(%3,%4) HEALPix %5")
+        if (false) qDebug() << QString("Reusing tile %1/%2: Grid(%3,%4) HEALPix %5")
                     .arg(m_currentTileIndex).arg(m_tiles.size())
                     .arg(tile.gridX).arg(tile.gridY)
                     .arg(tile.healpixPixel);
@@ -120,7 +120,7 @@ void EnhancedMosaicCreator::downloadTile(int tileIndex) {
     
     const SimpleTile& tile = m_tiles[tileIndex];
     
-    qDebug() << QString("Downloading tile %1/%2: Grid(%3,%4) HEALPix %5")
+    if (false) qDebug() << QString("Downloading tile %1/%2: Grid(%3,%4) HEALPix %5")
                 .arg(tileIndex + 1).arg(m_tiles.size())
                 .arg(tile.gridX).arg(tile.gridY)
                 .arg(tile.healpixPixel);
@@ -159,14 +159,14 @@ void EnhancedMosaicCreator::onTileDownloaded() {
             tile.downloaded = true;
             
             qint64 downloadTime = m_downloadStartTime.msecsTo(QDateTime::currentDateTime());
-            qDebug() << QString("✅ Tile %1/%2 downloaded: %3ms, %4 bytes, %5x%6 pixels%7")
+            if (false) qDebug() << QString("✅ Tile %1/%2 downloaded: %3ms, %4 bytes, %5x%6 pixels%7")
                         .arg(tileIndex + 1).arg(m_tiles.size())
                         .arg(downloadTime).arg(imageData.size())
                         .arg(tile.image.width()).arg(tile.image.height())
                         .arg(saved ? ", saved" : ", save failed");
         }
     } else {
-        qDebug() << QString("❌ Tile %1/%2 download failed: %3")
+        if (false) qDebug() << QString("❌ Tile %1/%2 download failed: %3")
                     .arg(tileIndex + 1).arg(m_tiles.size())
                     .arg(reply->errorString());
     }
@@ -179,7 +179,7 @@ void EnhancedMosaicCreator::onTileDownloaded() {
 void EnhancedMosaicCreator::assembleFinalMosaicCentered() {
     QString targetName = m_customTarget.name;
     
-    qDebug() << QString("\n=== Assembling Coordinate-Centered %1 Mosaic ===").arg(targetName);
+    if (false) qDebug() << QString("\n=== Assembling Coordinate-Centered %1 Mosaic ===").arg(targetName);
     
     int successfulTiles = 0;
     for (const SimpleTile& tile : m_tiles) {
@@ -189,7 +189,7 @@ void EnhancedMosaicCreator::assembleFinalMosaicCentered() {
     }
     
     if (successfulTiles == 0) {
-        qDebug() << QString("Failed to download tiles for %1").arg(targetName);
+        if (false) qDebug() << QString("Failed to download tiles for %1").arg(targetName);
         return;
     }
     
@@ -202,11 +202,11 @@ void EnhancedMosaicCreator::assembleFinalMosaicCentered() {
     
     QPainter rawPainter(&rawMosaic);
     
-    qDebug() << QString("Step 1: Assembling raw 3x3 mosaic (%1x%1 pixels)").arg(rawMosaicSize);
+    if (false) qDebug() << QString("Step 1: Assembling raw 3x3 mosaic (%1x%1 pixels)").arg(rawMosaicSize);
     
     for (const SimpleTile& tile : m_tiles) {
         if (!tile.downloaded || tile.image.isNull()) {
-            qDebug() << QString("  Skipping tile %1,%2 - not downloaded").arg(tile.gridX).arg(tile.gridY);
+            if (false) qDebug() << QString("  Skipping tile %1,%2 - not downloaded").arg(tile.gridX).arg(tile.gridY);
             continue;
         }
         
@@ -215,7 +215,7 @@ void EnhancedMosaicCreator::assembleFinalMosaicCentered() {
         
         rawPainter.drawImage(pixelX, pixelY, tile.image);
         
-        qDebug() << QString("  ✅ Placed tile (%1,%2) at pixel (%3,%4)")
+        if (false) qDebug() << QString("  ✅ Placed tile (%1,%2) at pixel (%3,%4)")
                     .arg(tile.gridX).arg(tile.gridY).arg(pixelX).arg(pixelY);
     }
     rawPainter.end();
@@ -223,13 +223,13 @@ void EnhancedMosaicCreator::assembleFinalMosaicCentered() {
     // Step 2: Calculate where the target coordinates fall in the raw mosaic
     QPoint targetPixel = calculateTargetPixelPosition();
     
-    qDebug() << QString("Step 2: Target coordinates map to pixel (%1,%2) in raw mosaic")
+    if (false) qDebug() << QString("Step 2: Target coordinates map to pixel (%1,%2) in raw mosaic")
                 .arg(targetPixel.x()).arg(targetPixel.y());
     
     // Step 3: Crop the mosaic to center the target coordinates
     QImage centeredMosaic = cropMosaicToCenter(rawMosaic, targetPixel);
     
-    qDebug() << QString("Step 3: Cropped to %1x%2 centered mosaic")
+    if (false) qDebug() << QString("Step 3: Cropped to %1x%2 centered mosaic")
                 .arg(centeredMosaic.width()).arg(centeredMosaic.height());
     
     // Step 4: Add crosshairs and labels at the true center
@@ -267,12 +267,12 @@ void EnhancedMosaicCreator::assembleFinalMosaicCentered() {
     QString mosaicFilename = QString("%1/%2_centered_mosaic.png").arg(m_outputDir).arg(safeName);
     bool saved = centeredMosaic.save(mosaicFilename);
     
-    qDebug() << QString("\n🎯 %1 COORDINATE-CENTERED MOSAIC COMPLETE!").arg(targetName);
-    qDebug() << QString("📁 Final size: %1×%2 pixels (%3 tiles used)")
+    if (false) qDebug() << QString("\n🎯 %1 COORDINATE-CENTERED MOSAIC COMPLETE!").arg(targetName);
+    if (false) qDebug() << QString("📁 Final size: %1×%2 pixels (%3 tiles used)")
                 .arg(centeredMosaic.width()).arg(centeredMosaic.height()).arg(successfulTiles);
-    qDebug() << QString("📁 Saved to: %1 (%2)")
+    if (false) qDebug() << QString("📁 Saved to: %1 (%2)")
                 .arg(mosaicFilename).arg(saved ? "SUCCESS" : "FAILED");
-    qDebug() << QString("✅ Target coordinates are now at exact center pixel (%1,%2)")
+    if (false) qDebug() << QString("✅ Target coordinates are now at exact center pixel (%1,%2)")
                 .arg(centerX).arg(centerY);
     
     saveProgressReport(targetName);
@@ -295,11 +295,11 @@ QPoint EnhancedMosaicCreator::calculateTargetPixelPosition() {
     }
     
     if (!containingTile) {
-        qDebug() << "Warning: Could not find containing tile, using geometric center";
+        if (false) qDebug() << "Warning: Could not find containing tile, using geometric center";
         return QPoint(1536/2, 1536/2);
     }
     
-    qDebug() << QString("Target is in tile (%1,%2) with center at RA=%3°, Dec=%4°")
+    if (false) qDebug() << QString("Target is in tile (%1,%2) with center at RA=%3°, Dec=%4°")
                 .arg(containingTile->gridX).arg(containingTile->gridY)
                 .arg(containingTile->skyCoordinates.ra_deg, 0, 'f', 6)
                 .arg(containingTile->skyCoordinates.dec_deg, 0, 'f', 6);
@@ -314,7 +314,7 @@ QPoint EnhancedMosaicCreator::calculateTargetPixelPosition() {
     // Apply cosine correction for RA at this declination
     offsetRA_arcsec *= cos(m_actualTarget.dec_deg * M_PI / 180.0);
     
-    qDebug() << QString("Angular offset from tile center: RA=%1\", Dec=%2\"")
+    if (false) qDebug() << QString("Angular offset from tile center: RA=%1\", Dec=%2\"")
                 .arg(offsetRA_arcsec, 0, 'f', 2)
                 .arg(offsetDec_arcsec, 0, 'f', 2);
     
@@ -322,7 +322,7 @@ QPoint EnhancedMosaicCreator::calculateTargetPixelPosition() {
     double offsetRA_pixels = offsetRA_arcsec / ARCSEC_PER_PIXEL;
     double offsetDec_pixels = -offsetDec_arcsec / ARCSEC_PER_PIXEL; // Negative because Y increases downward
     
-    qDebug() << QString("Pixel offset from tile center: %1,%2 pixels")
+    if (false) qDebug() << QString("Pixel offset from tile center: %1,%2 pixels")
                 .arg(offsetRA_pixels, 0, 'f', 1)
                 .arg(offsetDec_pixels, 0, 'f', 1);
     
@@ -337,7 +337,7 @@ QPoint EnhancedMosaicCreator::calculateTargetPixelPosition() {
     targetPixelX = std::max(0, std::min(targetPixelX, 1535));
     targetPixelY = std::max(0, std::min(targetPixelY, 1535));
     
-    qDebug() << QString("Target pixel in raw mosaic: (%1,%2)")
+    if (false) qDebug() << QString("Target pixel in raw mosaic: (%1,%2)")
                 .arg(targetPixelX).arg(targetPixelY);
     
     return QPoint(targetPixelX, targetPixelY);
@@ -356,27 +356,27 @@ QImage EnhancedMosaicCreator::cropMosaicToCenter(const QImage& rawMosaic, const 
     
     // Adjust if crop would go outside raw mosaic bounds
     if (cropX < 0) {
-        qDebug() << QString("Crop X adjusted from %1 to 0 (target too close to left edge)").arg(cropX);
+        if (false) qDebug() << QString("Crop X adjusted from %1 to 0 (target too close to left edge)").arg(cropX);
         cropX = 0;
     }
     if (cropY < 0) {
-        qDebug() << QString("Crop Y adjusted from %1 to 0 (target too close to top edge)").arg(cropY);
+        if (false) qDebug() << QString("Crop Y adjusted from %1 to 0 (target too close to top edge)").arg(cropY);
         cropY = 0;
     }
     if (cropX + cropSize > rawMosaic.width()) {
         int oldCropX = cropX;
         cropX = rawMosaic.width() - cropSize;
-        qDebug() << QString("Crop X adjusted from %1 to %2 (target too close to right edge)").arg(oldCropX).arg(cropX);
+        if (false) qDebug() << QString("Crop X adjusted from %1 to %2 (target too close to right edge)").arg(oldCropX).arg(cropX);
     }
     if (cropY + cropSize > rawMosaic.height()) {
         int oldCropY = cropY;
         cropY = rawMosaic.height() - cropSize;
-        qDebug() << QString("Crop Y adjusted from %1 to %2 (target too close to bottom edge)").arg(oldCropY).arg(cropY);
+        if (false) qDebug() << QString("Crop Y adjusted from %1 to %2 (target too close to bottom edge)").arg(oldCropY).arg(cropY);
     }
     
     QRect cropRect(cropX, cropY, cropSize, cropSize);
     
-    qDebug() << QString("Crop rectangle: (%1,%2) %3x%4")
+    if (false) qDebug() << QString("Crop rectangle: (%1,%2) %3x%4")
                 .arg(cropX).arg(cropY).arg(cropSize).arg(cropSize);
     
     return rawMosaic.copy(cropRect);

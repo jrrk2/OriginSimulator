@@ -17,7 +17,7 @@ void CommandHandler::processCommand(const QJsonObject &obj, WebSocketConnection 
     QString source = obj["Source"].toString();
     QString type = obj["Type"].toString();
     
-    qDebug() << "Processing command:" << command << "to" << destination << "from" << source;
+    if (false) qDebug() << "Processing command:" << command << "to" << destination << "from" << source;
     
     // Handle different commands
     if (command == "RunInitialize") {
@@ -209,17 +209,17 @@ void CommandHandler::handleGotoRaDec(const QJsonObject &obj, WebSocketConnection
         // ADD THESE DEBUG LINES:
         double received_ra = obj["Ra"].toDouble();
         double received_dec = obj["Dec"].toDouble();
-//         // qDebug() << "*** GOTO COMMAND RECEIVED ***";
-        qDebug() << "Raw RA from JSON:" << received_ra << "radians";
-        qDebug() << "Raw Dec from JSON:" << received_dec << "radians";
-        qDebug() << "RA in hours:" << (received_ra * 12.0 / M_PI);
-        qDebug() << "Dec in degrees:" << (received_dec * 180.0 / M_PI);
+        if (true) qDebug() << "*** GOTO COMMAND RECEIVED ***";
+        if (false) qDebug() << "Raw RA from JSON:" << received_ra << "radians";
+        if (false) qDebug() << "Raw Dec from JSON:" << received_dec << "radians";
+        if (true) qDebug() << "RA in hours:" << (received_ra * 12.0 / M_PI);
+        if (true) qDebug() << "Dec in degrees:" << (received_dec * 180.0 / M_PI);
         
         m_telescopeState->targetRa = received_ra;
         m_telescopeState->targetDec = received_dec;
         
-        qDebug() << "Stored targetRa:" << m_telescopeState->targetRa;
-        qDebug() << "Stored targetDec:" << m_telescopeState->targetDec;	
+        if (false) qDebug() << "Stored targetRa:" << m_telescopeState->targetRa;
+        if (false) qDebug() << "Stored targetDec:" << m_telescopeState->targetDec;	
         
         emit slewStarted();
         
@@ -254,9 +254,22 @@ void CommandHandler::handleSlew(const QJsonObject &obj, WebSocketConnection *wsC
         m_telescopeState->isGotoOver = false;
         m_telescopeState->isSlewing = true;
 
-        qDebug() << "*** SLEW COMMAND RECEIVED ***";
-        double alt_rate = obj["AltRate"].toDouble();
-        double az_rate = obj["AzRate"].toDouble();
+        if (false) qDebug() << "*** SLEW COMMAND RECEIVED ***";
+        // Iterate with auto and structured bindings (C++17)
+        if (false) for (auto it = obj.begin(); it != obj.end(); ++it) {
+            QString key = it.key();
+            QJsonValue value = it.value();
+            // Process key and value
+            if (true) qDebug() << key << ": " << value;
+        }
+
+        long alt_rate = obj["AltRate"].toInt();
+        long az_rate = obj["AzmRate"].toInt();
+        alt_rate = alt_rate < 0 ? -1 << -alt_rate : (1 << alt_rate) - 1;
+        az_rate = az_rate < 0 ? -1 << -az_rate : (1 << az_rate) - 1;
+        
+        if (true) qDebug() << alt_rate << " " << az_rate;
+        
         // Your RA/Dec coordinates
         struct ln_equ_posn equ_pos;
         equ_pos.ra = m_telescopeState->targetRa * 180.0 / M_PI;
@@ -265,8 +278,8 @@ void CommandHandler::handleSlew(const QJsonObject &obj, WebSocketConnection *wsC
         // Declination in degrees
         // Observer location
         struct ln_lnlat_posn observer;
-        observer.lng = -122.4194;  // Longitude (negative for West)
-        observer.lat = 37.7749;    // Latitude (positive for North)
+        observer.lng = m_telescopeState->longitude;   // Longitude (negative for West)
+        observer.lat = m_telescopeState->latitude;    // Latitude (positive for North)
 
         // Get current Julian Date
         double JD = ln_get_julian_from_sys();
@@ -275,28 +288,22 @@ void CommandHandler::handleSlew(const QJsonObject &obj, WebSocketConnection *wsC
         struct ln_hrz_posn hrz_pos;
         ln_get_hrz_from_equ(&equ_pos, &observer, JD, &hrz_pos);
 
-        hrz_pos.az += alt_rate;
-        hrz_pos.alt += az_rate;
+        hrz_pos.az += alt_rate / 3600.0;
+        hrz_pos.alt += az_rate / 3600.0;
         // Convert Alt/Az to RA/Dec
  
         ln_get_equ_from_hrz(&hrz_pos, &observer, JD, &equ_pos);
 
-        // Iterate with auto and structured bindings (C++17)
-        if (false) for (auto it = obj.begin(); it != obj.end(); ++it) {
-            QString key = it.key();
-            QJsonValue value = it.value();
-            // Process key and value
-            qDebug() << key << ": " << value;
-        }
-
-        qDebug() << "Old Incremental targetRa:" << m_telescopeState->targetRa;
-        qDebug() << "Old Incremental targetDec:" << m_telescopeState->targetDec;
+        if (true) qDebug() << "Old Incremental targetRa/Dec:"
+            << m_telescopeState->targetRa << " "
+            << m_telescopeState->targetDec;
 
         m_telescopeState->targetRa = equ_pos.ra * M_PI / 180.0;
         m_telescopeState->targetDec = equ_pos.dec * M_PI / 180.0;
 
-        qDebug() << "New Incremental targetRa:" << m_telescopeState->targetRa;
-        qDebug() << "New Incremental targetDec:" << m_telescopeState->targetDec;
+        if (true) qDebug() << "New Incremental targetRa/Dec:"
+            << m_telescopeState->targetRa << " "
+            << m_telescopeState->targetDec;
         
         emit slewStarted();
         

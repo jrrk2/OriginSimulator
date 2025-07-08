@@ -6,7 +6,7 @@
 int main(int argc, char *argv[]) {
     QCoreApplication app(argc, argv);
     
-    qDebug() << "Simple HiPS Test - Testing M51 position";
+    if (false) qDebug() << "Simple HiPS Test - Testing M51 position";
     
     ProperHipsClient client;
     
@@ -14,13 +14,13 @@ int main(int argc, char *argv[]) {
     SkyPosition m51 = {202.4695833, 47.1951667, "M51", "Whirlpool Galaxy"};
     QString url = client.buildTileUrl("DSS2_Color", m51, 6);
     
-    qDebug() << "M51 test URL:" << url;
+    if (false) qDebug() << "M51 test URL:" << url;
     
     if (!url.isEmpty()) {
-        qDebug() << "✅ URL generation successful";
+        if (false) qDebug() << "✅ URL generation successful";
         client.testSurveyAtPosition("DSS2_Color", m51);
     } else {
-        qDebug() << "❌ URL generation failed";
+        if (false) qDebug() << "❌ URL generation failed";
         return 1;
     }
     

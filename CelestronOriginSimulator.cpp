@@ -43,7 +43,7 @@ CelestronOriginSimulator::CelestronOriginSimulator(QObject *parent) : QObject(pa
     connect(m_mosaicCreator, &EnhancedMosaicCreator::mosaicComplete, 
             this, &CelestronOriginSimulator::onMosaicComplete);
     
-    qDebug() << "Headless Enhanced Mosaic Creator initialized";
+    if (false) qDebug() << "Headless Enhanced Mosaic Creator initialized";
     
     setupHipsIntegration();  // Changed from setupRubinIntegration
     
@@ -54,7 +54,7 @@ CelestronOriginSimulator::CelestronOriginSimulator(QObject *parent) : QObject(pa
         // First broadcast immediately
         QTimer::singleShot(100, this, &CelestronOriginSimulator::sendBroadcast);
     } else {
-        qDebug() << "Failed to start Origin simulator:" << m_tcpServer->errorString();
+        if (false) qDebug() << "Failed to start Origin simulator:" << m_tcpServer->errorString();
     }
 }
 
@@ -80,8 +80,8 @@ void CelestronOriginSimulator::setupHipsIntegration() {
     connect(m_hipsClient, &ProperHipsClient::testingComplete, 
             this, &CelestronOriginSimulator::onHipsTestingComplete);
     
-    qDebug() << "ProperHips integration initialized";
-    qDebug() << "HiPS images will be saved to:" << hipsDir;
+    if (false) qDebug() << "ProperHips integration initialized";
+    if (false) qDebug() << "HiPS images will be saved to:" << hipsDir;
 
     // Set initial coordinates
     m_telescopeState->ra = m_telescopeState->baseRA;
@@ -99,14 +99,14 @@ void CelestronOriginSimulator::setupHipsIntegration() {
 }
 
 void CelestronOriginSimulator::fetchHipsImagesForPosition(const SkyPosition& position) {
-    qDebug() << QString("Fetching HiPS images for position: RA=%1°, Dec=%2°")
+    if (false) qDebug() << QString("Fetching HiPS images for position: RA=%1°, Dec=%2°")
                 .arg(position.ra_deg, 0, 'f', 6)
                 .arg(position.dec_deg, 0, 'f', 6);
     
     // Use the best available survey
     QString bestSurvey = getBestAvailableSurvey();
     if (bestSurvey.isEmpty()) {
-        qDebug() << "No working surveys available";
+        if (false) qDebug() << "No working surveys available";
         return;
     }
     
@@ -141,7 +141,7 @@ QString CelestronOriginSimulator::getBestAvailableSurvey() const {
 
 // Slot implementations for HiPS integration
 void CelestronOriginSimulator::onHipsImageReady(const QString& filename) {
-    qDebug() << "HiPS Observatory image ready:" << filename;
+    if (false) qDebug() << "HiPS Observatory image ready:" << filename;
     
     // Extract just the filename for the telescope's image system
     QFileInfo fileInfo(filename);
@@ -155,11 +155,11 @@ void CelestronOriginSimulator::onHipsImageReady(const QString& filename) {
     // Notify all connected clients about the new image
     m_statusSender->sendNewImageReadyToAll();
     
-    qDebug() << "Telescope updated with HiPS image:" << relativePath;
+    if (true) qDebug() << "Telescope updated with HiPS image:" << relativePath;
 }
 
 void CelestronOriginSimulator::onHipsTilesAvailable(const QStringList& filenames) {
-    qDebug() << "HiPS Observatory tiles available:" << filenames.size();
+    if (false) qDebug() << "HiPS Observatory tiles available:" << filenames.size();
     
     if (!filenames.isEmpty()) {
         // Use the first available tile
@@ -168,13 +168,13 @@ void CelestronOriginSimulator::onHipsTilesAvailable(const QStringList& filenames
         // Log all available files
         for (const QString& file : filenames) {
             QFileInfo info(file);
-            qDebug() << "  Available:" << info.fileName() << "(" << info.size() << "bytes)";
+            if (false) qDebug() << "  Available:" << info.fileName() << "(" << info.size() << "bytes)";
         }
     }
 }
 
 void CelestronOriginSimulator::onHipsFetchError(const QString& error_message) {
-    qDebug() << "HiPS Observatory fetch error:" << error_message;
+    if (false) qDebug() << "HiPS Observatory fetch error:" << error_message;
     
     // Send error notification to clients
     QJsonObject errorNotification;
@@ -190,7 +190,7 @@ void CelestronOriginSimulator::onHipsFetchError(const QString& error_message) {
 }
 
 void CelestronOriginSimulator::onHipsTestingComplete() {
-    qDebug() << "HiPS testing completed";
+    if (false) qDebug() << "HiPS testing completed";
     
     // Print summary of results
     m_hipsClient->printSummary();
@@ -255,8 +255,8 @@ void CelestronOriginSimulator::updateSlew() {
     slewProgress += 20;  // 20% progress per 500ms
     
     if (slewProgress >= 100) {
-        qDebug() << "Before update - RA:" << m_telescopeState->ra << "Dec:" << m_telescopeState->dec;
-        qDebug() << "Target RA:" << m_telescopeState->targetRa << "Target Dec:" << m_telescopeState->targetDec;
+        if (false) qDebug() << "Before update - RA:" << m_telescopeState->ra << "Dec:" << m_telescopeState->dec;
+        if (false) qDebug() << "Target RA:" << m_telescopeState->targetRa << "Target Dec:" << m_telescopeState->targetDec;
         
         // Slew complete
         m_telescopeState->isGotoOver = true;
@@ -270,7 +270,7 @@ void CelestronOriginSimulator::updateSlew() {
         m_slewTimer->stop();
         slewProgress = 0;
 
-        qDebug() << "After update - RA:" << m_telescopeState->ra << "Dec:" << m_telescopeState->dec;
+        if (false) qDebug() << "After update - RA:" << m_telescopeState->ra << "Dec:" << m_telescopeState->dec;
         
         // Update mount status
         m_statusSender->sendMountStatusToAll();
@@ -278,7 +278,7 @@ void CelestronOriginSimulator::updateSlew() {
         // Add delay to ensure coordinates are fully updated
         QTimer::singleShot(100, this, [this]() {
             if (m_hipsClient) {
-                qDebug() << "🎯 Slew complete - fetching HiPS data for new position";
+                if (false) qDebug() << "🎯 Slew complete - fetching HiPS data for new position";
                 
                 // Convert telescope coordinates to SkyPosition
                 SkyPosition newPos = {
@@ -288,12 +288,12 @@ void CelestronOriginSimulator::updateSlew() {
                     "Position after telescope slew"
                 };
                 
-                qDebug() << "🎯 Using target coordinates for HiPS fetch - RA:" << newPos.ra_deg << "Dec:" << newPos.dec_deg;
+                if (false) qDebug() << "🎯 Using target coordinates for HiPS fetch - RA:" << newPos.ra_deg << "Dec:" << newPos.dec_deg;
                 fetchHipsImagesForPosition(newPos);
             }
         });
         
-        qDebug() << "🎯 Slew complete";
+        if (false) qDebug() << "🎯 Slew complete";
     }
 }
 
@@ -309,7 +309,7 @@ void CelestronOriginSimulator::updateImaging() {
         m_telescopeState->isImaging = false;
         m_imagingTimer->stop();
         
-        qDebug() << "Imaging complete";
+        if (false) qDebug() << "Imaging complete";
     }
 }
 
@@ -423,7 +423,7 @@ void CelestronOriginSimulator::sendBroadcast() {
     for (const QHostAddress &address : ipAddresses) {
         if (address.protocol() == QAbstractSocket::IPv4Protocol && address != QHostAddress::LocalHost) {
             QString broadcastMessage = message.arg(address.toString());
-            qDebug() << broadcastMessage;
+            if (false) qDebug() << broadcastMessage;
             
             // Send broadcast on all network interfaces
             m_udpSocket->writeDatagram(
@@ -474,7 +474,7 @@ void CelestronOriginSimulator::handleIncomingData(QTcpSocket *socket) {
     QString method = requestParts[0];
     QString path = requestParts[1];
     
-//     qDebug() << "Origin Protocol Request:" << method << path;
+//     if (false) qDebug() << "Origin Protocol Request:" << method << path;
     
     // Check if this is a WebSocket upgrade request
     bool isWebSocketUpgrade = false;
@@ -506,19 +506,19 @@ void CelestronOriginSimulator::handleIncomingData(QTcpSocket *socket) {
 // Perform handshake FIRST, then transfer socket ownership
 
 void CelestronOriginSimulator::handleWebSocketUpgrade(QTcpSocket *socket, const QByteArray &requestData) {
-//     // qDebug() << "*** STARTING WEBSOCKET UPGRADE PROCESS ***";
-//     qDebug() << "Request data size:" << requestData.size();
+//     // if (false) qDebug() << "*** STARTING WEBSOCKET UPGRADE PROCESS ***";
+//     if (false) qDebug() << "Request data size:" << requestData.size();
     
     // Create WebSocketConnection but DON'T disconnect protocol detector yet
     WebSocketConnection *wsConn = new WebSocketConnection(socket, this, false); // false = don't take ownership yet
     
     // FIRST: Perform the handshake using the request data
     if (wsConn->performHandshake(requestData)) {
-//         // qDebug() << "*** HANDSHAKE SUCCESSFUL - TRANSFERRING SOCKET OWNERSHIP ***";
+//         // if (false) qDebug() << "*** HANDSHAKE SUCCESSFUL - TRANSFERRING SOCKET OWNERSHIP ***";
         
         // CRITICAL: NOW disconnect the protocol detector since handshake worked
         disconnect(socket, &QTcpSocket::readyRead, this, nullptr);
-//         // qDebug() << "*** PROTOCOL DETECTOR DISCONNECTED ***";
+//         // if (false) qDebug() << "*** PROTOCOL DETECTOR DISCONNECTED ***";
         
         // Clear any pending data since we're switching protocols  
         m_pendingRequests.remove(socket);
@@ -546,7 +546,7 @@ void CelestronOriginSimulator::handleWebSocketUpgrade(QTcpSocket *socket, const 
         connect(wsConn, &WebSocketConnection::disconnected, 
                 this, &CelestronOriginSimulator::onWebSocketDisconnected);
         
-//         qDebug() << "WebSocket connection established for telescope control";
+//         if (false) qDebug() << "WebSocket connection established for telescope control";
         
         // Send initial status updates after a brief delay
         QTimer::singleShot(1000, this, [this, wsConn]() {
@@ -562,7 +562,7 @@ void CelestronOriginSimulator::handleWebSocketUpgrade(QTcpSocket *socket, const 
             }
         });
     } else {
-//         // qDebug() << "*** HANDSHAKE FAILED - KEEPING PROTOCOL DETECTOR ***";
+//         // if (false) qDebug() << "*** HANDSHAKE FAILED - KEEPING PROTOCOL DETECTOR ***";
         
         // Handshake failed, so keep the original protocol detector connected
         // Don't disconnect anything - let it continue as HTTP
@@ -574,7 +574,7 @@ void CelestronOriginSimulator::handleWebSocketUpgrade(QTcpSocket *socket, const 
 }
 
 void CelestronOriginSimulator::handleHttpImageRequest(QTcpSocket *socket, const QString &path) {
-//     qDebug() << "Handling HTTP image request for path:" << path;
+    if (false) qDebug() << "Handling HTTP image request for path:" << path;
 
     sendHttpResponse(socket, 200, "image/jpeg", m_imageData);
 }
@@ -606,7 +606,7 @@ void CelestronOriginSimulator::handleHttpAstroImageRequest(QTcpSocket *socket, c
     }
     
     sendHttpResponse(socket, 200, contentType, imageData);
-//     qDebug() << "Served Origin astrophotography image:" << fileName;
+//     if (false) qDebug() << "Served Origin astrophotography image:" << fileName;
 }
 
 void CelestronOriginSimulator::sendHttpResponse(QTcpSocket *socket, int statusCode, 
@@ -641,7 +641,7 @@ void CelestronOriginSimulator::processWebSocketCommand(const QString &message) {
     
     QJsonDocument doc = QJsonDocument::fromJson(message.toUtf8());
     if (!doc.isObject()) {
-//         qDebug() << "Received invalid JSON:" << message;
+//         if (false) qDebug() << "Received invalid JSON:" << message;
         return;
     }
     
@@ -652,7 +652,7 @@ void CelestronOriginSimulator::processWebSocketCommand(const QString &message) {
     QString destination = obj["Destination"].toString();
     QString source = obj["Source"].toString();
     
-//     qDebug() << "Received WebSocket command:" << command << "to" << destination << "from" << source;
+//     if (false) qDebug() << "Received WebSocket command:" << command << "to" << destination << "from" << source;
     
     // Handle status requests directly
     if (command == "GetStatus") {
@@ -774,7 +774,7 @@ void CelestronOriginSimulator::sendStatusUpdates() {
 // Add this method to monitor connection health:
 
 void CelestronOriginSimulator::checkConnectionHealth() {
-//     qDebug() << "Active WebSocket connections:" << m_webSocketClients.size();
+//     if (false) qDebug() << "Active WebSocket connections:" << m_webSocketClients.size();
     
     for (WebSocketConnection *wsConn : m_webSocketClients) {
         // Check if connection is still alive
@@ -786,19 +786,19 @@ void CelestronOriginSimulator::checkConnectionHealth() {
 
 void CelestronOriginSimulator::handleWebSocketPing(const QByteArray &payload) {
     WebSocketConnection *wsConn = qobject_cast<WebSocketConnection*>(sender());
-//     qDebug() << "WebSocket ping received from client, payload size:" << payload.size();
+//     if (false) qDebug() << "WebSocket ping received from client, payload size:" << payload.size();
     // The WebSocketConnection automatically sends pong, we just log it here
 }
 
 void CelestronOriginSimulator::handleWebSocketPong(const QByteArray &payload) {
     WebSocketConnection *wsConn = qobject_cast<WebSocketConnection*>(sender());
-//     qDebug() << "WebSocket pong received from client, payload size:" << payload.size();
+//     if (false) qDebug() << "WebSocket pong received from client, payload size:" << payload.size();
     // Client responded to our ping successfully
 }
 
 void CelestronOriginSimulator::handleWebSocketTimeout() {
     WebSocketConnection *wsConn = qobject_cast<WebSocketConnection*>(sender());
-//     qDebug() << "WebSocket ping timeout occurred - client not responding";
+//     if (false) qDebug() << "WebSocket ping timeout occurred - client not responding";
     
     if (wsConn && m_webSocketClients.contains(wsConn)) {
         // Remove from active clients but don't delete yet - let disconnected signal handle cleanup
@@ -809,7 +809,7 @@ void CelestronOriginSimulator::handleWebSocketTimeout() {
 void CelestronOriginSimulator::generateCurrentSkyImage() {
     // Skip if already generating
     if (m_mosaicInProgress) {
-        qDebug() << "Mosaic generation already in progress, skipping";
+        if (false) qDebug() << "Mosaic generation already in progress, skipping";
         return;
     }
     
@@ -819,7 +819,7 @@ void CelestronOriginSimulator::generateCurrentSkyImage() {
     double ra_deg = ra_rad * 180.0 / M_PI;
     double dec_deg = dec_rad * 180.0 / M_PI;
     
-    qDebug() << QString("Generating enhanced mosaic for RA=%1°, Dec=%2°")
+    if (false) qDebug() << QString("Generating enhanced mosaic for RA=%1°, Dec=%2°")
                 .arg(ra_deg, 0, 'f', 6)
                 .arg(dec_deg, 0, 'f', 6);
     
@@ -850,7 +850,7 @@ void CelestronOriginSimulator::generateCurrentSkyImage() {
                       .arg(dec_negative ? "-" : "+")
                       .arg(dec_d).arg(dec_m, 2, 10, QChar('0')).arg(dec_s, 0, 'f', 1);
     
-    qDebug() << QString("Converted coordinates: %1, %2").arg(raText).arg(decText);
+    if (false) qDebug() << QString("Converted coordinates: %1, %2").arg(raText).arg(decText);
     
     // Set coordinates in the headless mosaic creator
     m_mosaicCreator->setCustomCoordinates(raText, decText, currentPosition.name);
@@ -859,7 +859,7 @@ void CelestronOriginSimulator::generateCurrentSkyImage() {
     m_mosaicInProgress = true;
     m_mosaicCreator->createCustomMosaic(currentPosition);
     
-    qDebug() << "Enhanced mosaic generation started...";
+    if (false) qDebug() << "Enhanced mosaic generation started...";
 }
 
 // Method 1: Save to QByteArray as JPEG/PNG (most common)
@@ -872,25 +872,25 @@ QByteArray saveImageToByteArray(const QImage& image, const QString& format = "JP
     bool success = image.save(&buffer, format.toUtf8().data(), quality);
     
     if (success) {
-        qDebug() << QString("Image saved to buffer: %1 bytes, format: %2")
+        if (false) qDebug() << QString("Image saved to buffer: %1 bytes, format: %2")
                     .arg(byteArray.size()).arg(format);
     } else {
-        qDebug() << "Failed to save image to buffer";
+        if (false) qDebug() << "Failed to save image to buffer";
     }
     
     return byteArray;
 }
 
 void CelestronOriginSimulator::onMosaicComplete(const QImage& mosaic) {
-    qDebug() << "Enhanced mosaic complete, processing for telescope image";
+    if (false) qDebug() << "Enhanced mosaic complete, processing for telescope image";
     
     if (mosaic.isNull()) {
-        qDebug() << "Received null mosaic image";
+        if (false) qDebug() << "Received null mosaic image";
         m_mosaicInProgress = false;
         return;
     }
     
-    qDebug() << QString("Received mosaic: %1x%2 pixels").arg(mosaic.width()).arg(mosaic.height());
+    if (false) qDebug() << QString("Received mosaic: %1x%2 pixels").arg(mosaic.width()).arg(mosaic.height());
     
     // Resize to telescope camera resolution (800x600) - Origin camera specs
     QImage telescopeImage = mosaic.scaled(800, 600, Qt::KeepAspectRatio, Qt::SmoothTransformation);
@@ -916,6 +916,8 @@ void CelestronOriginSimulator::onMosaicComplete(const QImage& mosaic) {
     
     m_imageData = saveImageToByteArray(telescopeImage, "JPEG", 95);
   
+    if (true) qDebug() << QString("Updated mosaic: %1x%2 pixels").arg(telescopeImage.width()).arg(telescopeImage.height());
+
     m_mosaicInProgress = false;
 }
 

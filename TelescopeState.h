@@ -16,8 +16,8 @@ public:
     QString chargerStatus = "CHARGING";
     QDateTime dateTime = QDateTime::currentDateTime();
     QString timeZone = "Europe/London";
-    double latitude = -0.5847;   // Cerro Observatory
-    double longitude = 1.23; 
+    double latitude = 51.5072;   // London
+    double longitude = 0.1276;
     bool isAligned = true;  // Real telescope shows aligned
     bool isGotoOver = true;
     bool isTracking = false;

@@ -58,16 +58,16 @@ M51MosaicCreator::M51MosaicCreator(QObject *parent) : QObject(parent) {
     m_outputDir = "m51_mosaic_tiles";
     QDir().mkpath(m_outputDir);
     
-    qDebug() << "=== M51 Simple Mosaic Creator ===";
-    qDebug() << "Just placing tiles in a 3x3 grid - no fancy coordinate stuff!";
+    if (false) qDebug() << "=== M51 Simple Mosaic Creator ===";
+    if (false) qDebug() << "Just placing tiles in a 3x3 grid - no fancy coordinate stuff!";
 }
 
 void M51MosaicCreator::createSimpleMosaic(SkyPosition pos) {
-    qDebug() << "\n=== Creating Simple Mosaic ===";
+    if (false) qDebug() << "\n=== Creating Simple Mosaic ===";
     
     createTileGrid(pos);
     
-    qDebug() << QString("\nStarting download of %1 tiles...").arg(m_tiles.size());
+    if (false) qDebug() << QString("\nStarting download of %1 tiles...").arg(m_tiles.size());
     m_currentTileIndex = 0;
     processNextTile();
 }
@@ -79,7 +79,7 @@ void M51MosaicCreator::createTileGrid(SkyPosition pos) {
     long long m51Pixel = m_hipsClient->calculateHealPixel(pos, order);
     QList<QList<long long>> pgrid = m_hipsClient->createProper3x3Grid(m51Pixel, order);
     
-    qDebug() << "Creating 3×3 tile grid:";
+    if (false) qDebug() << "Creating 3×3 tile grid:";
     
     for (int y = 0; y < 3; y++) {
         for (int x = 0; x < 3; x++) {
@@ -87,7 +87,7 @@ void M51MosaicCreator::createTileGrid(SkyPosition pos) {
             tile.gridX = x;
             tile.gridY = y;
             tile.healpixPixel = pgrid[y][x];
-	    qDebug() << "pgrid: " << pgrid[y][x];
+	    if (false) qDebug() << "pgrid: " << pgrid[y][x];
             tile.downloaded = false;
             
             // Build filename and URL directly from HEALPix pixel
@@ -99,10 +99,10 @@ void M51MosaicCreator::createTileGrid(SkyPosition pos) {
                       .arg(order).arg(dir).arg(tile.healpixPixel);
             
             if (tile.healpixPixel == 176440) {
-                qDebug() << QString("  Grid(%1,%2): HEALPix %3 ★ M51 TILE! ★")
+                if (false) qDebug() << QString("  Grid(%1,%2): HEALPix %3 ★ M51 TILE! ★")
                             .arg(x).arg(y).arg(tile.healpixPixel);
             } else {
-                qDebug() << QString("  Grid(%1,%2): HEALPix %3")
+                if (false) qDebug() << QString("  Grid(%1,%2): HEALPix %3")
                             .arg(x).arg(y).arg(tile.healpixPixel);
             }
             
@@ -110,7 +110,7 @@ void M51MosaicCreator::createTileGrid(SkyPosition pos) {
         }
     }
     
-    qDebug() << QString("Created simple %1 tile grid").arg(m_tiles.size());
+    if (false) qDebug() << QString("Created simple %1 tile grid").arg(m_tiles.size());
 }
 
 void M51MosaicCreator::processNextTile() {
@@ -127,11 +127,11 @@ void M51MosaicCreator::downloadTile(int tileIndex) {
     
     const SimpleTile& tile = m_tiles[tileIndex];
     
-    qDebug() << QString("Downloading tile %1/%2: Grid(%3,%4) HEALPix %5")
+    if (false) qDebug() << QString("Downloading tile %1/%2: Grid(%3,%4) HEALPix %5")
                 .arg(tileIndex + 1).arg(m_tiles.size())
                 .arg(tile.gridX).arg(tile.gridY)
                 .arg(tile.healpixPixel);
-    qDebug() << QString("URL: %1").arg(tile.url);
+    if (false) qDebug() << QString("URL: %1").arg(tile.url);
     
     // Create network request
     QNetworkRequest request(QUrl(tile.url));
@@ -176,18 +176,18 @@ void M51MosaicCreator::onTileDownloaded() {
             
             qint64 downloadTime = m_downloadStartTime.msecsTo(QDateTime::currentDateTime());
             
-            qDebug() << QString("✅ Tile %1/%2 downloaded: %3ms, %4 bytes, %5x%6 pixels%7")
+            if (false) qDebug() << QString("✅ Tile %1/%2 downloaded: %3ms, %4 bytes, %5x%6 pixels%7")
                         .arg(tileIndex + 1).arg(m_tiles.size())
                         .arg(downloadTime)
                         .arg(imageData.size())
                         .arg(tile.image.width()).arg(tile.image.height())
                         .arg(saved ? ", saved" : ", save failed");
         } else {
-            qDebug() << QString("❌ Tile %1/%2 - invalid image data")
+            if (false) qDebug() << QString("❌ Tile %1/%2 - invalid image data")
                         .arg(tileIndex + 1).arg(m_tiles.size());
         }
     } else {
-        qDebug() << QString("❌ Tile %1/%2 download failed: %3")
+        if (false) qDebug() << QString("❌ Tile %1/%2 download failed: %3")
                     .arg(tileIndex + 1).arg(m_tiles.size())
                     .arg(reply->errorString());
     }
@@ -201,7 +201,7 @@ void M51MosaicCreator::onTileDownloaded() {
 }
 
 void M51MosaicCreator::assembleFinalMosaic() {
-    qDebug() << "\n=== Assembling Simple M51 Mosaic ===";
+    if (false) qDebug() << "\n=== Assembling Simple M51 Mosaic ===";
     
     int successfulTiles = 0;
     for (const SimpleTile& tile : m_tiles) {
@@ -210,10 +210,10 @@ void M51MosaicCreator::assembleFinalMosaic() {
         }
     }
     
-    qDebug() << QString("Downloaded %1/%2 tiles").arg(successfulTiles).arg(m_tiles.size());
+    if (false) qDebug() << QString("Downloaded %1/%2 tiles").arg(successfulTiles).arg(m_tiles.size());
     
     if (successfulTiles == 0) {
-        qDebug() << "❌ No tiles downloaded successfully";
+        if (false) qDebug() << "❌ No tiles downloaded successfully";
         QTimer::singleShot(1000, qApp, &QApplication::quit);
         return;
     }
@@ -229,11 +229,11 @@ void M51MosaicCreator::assembleFinalMosaic() {
     
     int tilesPlaced = 0;
     
-    qDebug() << "Placing tiles in simple grid:";
+    if (false) qDebug() << "Placing tiles in simple grid:";
     
     for (const SimpleTile& tile : m_tiles) {
         if (!tile.downloaded || tile.image.isNull()) {
-            qDebug() << QString("  Skipping tile %1,%2 - not downloaded").arg(tile.gridX).arg(tile.gridY);
+            if (false) qDebug() << QString("  Skipping tile %1,%2 - not downloaded").arg(tile.gridX).arg(tile.gridY);
             continue;
         }
         
@@ -247,10 +247,10 @@ void M51MosaicCreator::assembleFinalMosaic() {
         tilesPlaced++;
         
         if (tile.healpixPixel == 176440) {
-            qDebug() << QString("  ✅ PLACED M51 TILE (%1,%2) at pixel (%3,%4)")
+            if (false) qDebug() << QString("  ✅ PLACED M51 TILE (%1,%2) at pixel (%3,%4)")
                         .arg(tile.gridX).arg(tile.gridY).arg(pixelX).arg(pixelY);
         } else {
-            qDebug() << QString("  ✅ Placed tile (%1,%2) at pixel (%3,%4)")
+            if (false) qDebug() << QString("  ✅ Placed tile (%1,%2) at pixel (%3,%4)")
                         .arg(tile.gridX).arg(tile.gridY).arg(pixelX).arg(pixelY);
         }
     }
@@ -275,22 +275,22 @@ void M51MosaicCreator::assembleFinalMosaic() {
     QString mosaicFilename = QString("%1/m51_simple_mosaic_3x3.png").arg(m_outputDir);
     bool saved = finalMosaic.save(mosaicFilename);
     
-    qDebug() << QString("\n🖼️  Simple mosaic complete!");
-    qDebug() << QString("📁 Size: %1×%2 pixels (%3 tiles placed)")
+    if (false) qDebug() << QString("\n🖼️  Simple mosaic complete!");
+    if (false) qDebug() << QString("📁 Size: %1×%2 pixels (%3 tiles placed)")
                 .arg(mosaicSize).arg(mosaicSize).arg(tilesPlaced);
-    qDebug() << QString("📁 Saved to: %1 (%2)")
+    if (false) qDebug() << QString("📁 Saved to: %1 (%2)")
                 .arg(mosaicFilename).arg(saved ? "SUCCESS" : "FAILED");
     
     // Also save a smaller preview
     QString previewFilename = QString("%1/m51_simple_preview.jpg").arg(m_outputDir);
     QImage preview = finalMosaic.scaled(512, 512, Qt::KeepAspectRatio, Qt::SmoothTransformation);
     preview.save(previewFilename);
-    qDebug() << QString("📁 Preview: %1").arg(previewFilename);
+    if (false) qDebug() << QString("📁 Preview: %1").arg(previewFilename);
     
     saveProgressReport();
     
-    qDebug() << "\n🎯 SIMPLE M51 MOSAIC COMPLETE!";
-    qDebug() << "✅ M51 should be clearly visible in the center tile with crosshairs";
+    if (false) qDebug() << "\n🎯 SIMPLE M51 MOSAIC COMPLETE!";
+    if (false) qDebug() << "✅ M51 should be clearly visible in the center tile with crosshairs";
     
     QTimer::singleShot(2000, qApp, &QApplication::quit);
 }
@@ -300,7 +300,7 @@ void M51MosaicCreator::saveProgressReport() {
     QFile file(reportFile);
     
     if (!file.open(QIODevice::WriteOnly | QIODevice::Text)) {
-        qDebug() << "Could not save progress report";
+        if (false) qDebug() << "Could not save progress report";
         return;
     }
     
@@ -321,7 +321,7 @@ void M51MosaicCreator::saveProgressReport() {
     }
     
     file.close();
-    qDebug() << "Report saved:" << reportFile;
+    if (false) qDebug() << "Report saved:" << reportFile;
 }
 
 int main(int argc, char *argv[]) {
@@ -331,8 +331,8 @@ int main(int argc, char *argv[]) {
     SkyPosition dfltpos = {202.4695833, 47.1951667, "M51", "Whirlpool Galaxy"};
     SkyPosition pos = argc > 4 ? argpos : dfltpos;
 
-    qDebug() << "Simple Mosaic Creator";
-    qDebug() << "No fancy coordinates - just a simple 3x3 grid!\n";
+    if (false) qDebug() << "Simple Mosaic Creator";
+    if (false) qDebug() << "No fancy coordinates - just a simple 3x3 grid!\n";
     
     M51MosaicCreator creator;
     creator.createSimpleMosaic(pos);
