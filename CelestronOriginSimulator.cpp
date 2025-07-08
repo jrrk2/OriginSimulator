@@ -423,6 +423,7 @@ void CelestronOriginSimulator::sendBroadcast() {
     for (const QHostAddress &address : ipAddresses) {
         if (address.protocol() == QAbstractSocket::IPv4Protocol && address != QHostAddress::LocalHost) {
             QString broadcastMessage = message.arg(address.toString());
+            qDebug() << broadcastMessage;
             
             // Send broadcast on all network interfaces
             m_udpSocket->writeDatagram(

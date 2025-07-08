@@ -6,6 +6,10 @@ TARGET = OriginSimulator
 TEMPLATE = app
 INCLUDEPATH += healpixmirror/src/cxx/Healpix_cxx
 INCLUDEPATH += healpixmirror/src/cxx/cxxsupport
+LIBS += -lnova
+# For Apple Silicon Macs, use:
+INCLUDEPATH += /opt/homebrew/include
+LIBPATH += /opt/homebrew/lib
 
 # Sources
 SOURCES += \
