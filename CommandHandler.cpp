@@ -38,6 +38,8 @@ void CommandHandler::processCommand(const QJsonObject &obj, WebSocketConnection 
         handleStopTracking(obj, wsConn, sequenceId, source, destination);
     } else if (command == "RunImaging") {
         handleRunImaging(obj, wsConn, sequenceId, source, destination);
+    } else if (command == "RunSampleCapture") {
+        handleRunSampleCapture(obj, wsConn, sequenceId, source, destination);
     } else if (command == "CancelImaging") {
         handleCancelImaging(obj, wsConn, sequenceId, source, destination);
     } else if (command == "MoveToPosition" && destination == "Focuser") {
@@ -205,6 +207,7 @@ void CommandHandler::handleGotoRaDec(const QJsonObject &obj, WebSocketConnection
     if (m_telescopeState->isAligned) {
         m_telescopeState->isGotoOver = false;
         m_telescopeState->isSlewing = true;
+	m_telescopeState->syncTracking();
 
         // ADD THESE DEBUG LINES:
         double received_ra = obj["Ra"].toDouble();
@@ -253,6 +256,7 @@ void CommandHandler::handleSlew(const QJsonObject &obj, WebSocketConnection *wsC
     if (m_telescopeState->isAligned) {
         m_telescopeState->isGotoOver = false;
         m_telescopeState->isSlewing = true;
+	m_telescopeState->syncTracking();
 
         if (false) qDebug() << "*** SLEW COMMAND RECEIVED ***";
         // Iterate with auto and structured bindings (C++17)
@@ -269,7 +273,7 @@ void CommandHandler::handleSlew(const QJsonObject &obj, WebSocketConnection *wsC
         az_rate = az_rate < 0 ? -1 << -az_rate : (1 << az_rate) - 1;
         
         if (true) qDebug() << alt_rate << " " << az_rate;
-        
+	
         // Your RA/Dec coordinates
         struct ln_equ_posn equ_pos;
         equ_pos.ra = m_telescopeState->targetRa * 180.0 / M_PI;
@@ -792,4 +796,34 @@ void CommandHandler::sendJsonResponse(WebSocketConnection *wsConn, const QJsonOb
     QJsonDocument doc(response);
     QString message = doc.toJson();
     wsConn->sendTextMessage(message);
+}
+
+void CommandHandler::handleRunSampleCapture(const QJsonObject &obj, WebSocketConnection *wsConn, int sequenceId, const QString &source, const QString &destination) {
+    // Extract exposure parameters
+    double exposureTime = obj["ExposureTime"].toDouble();
+    int iso = obj["ISO"].toInt();
+    
+    qDebug() << "RunSampleCapture: Exposure=" << exposureTime << "ISO=" << iso;
+    
+    // Update telescope state with camera parameters
+    m_telescopeState->exposure = exposureTime;
+    m_telescopeState->iso = iso;
+    m_telescopeState->isImaging = true;
+    m_telescopeState->imagingTimeLeft = static_cast<int>(exposureTime) + 2;  // Exposure + processing time
+    
+    // Send immediate response
+    QJsonObject response;
+    response["Command"] = "RunSampleCapture";
+    response["Destination"] = source;
+    response["ErrorCode"] = 0;
+    response["ErrorMessage"] = "";
+    response["ExpiredAt"] = QDateTime::currentDateTime().toSecsSinceEpoch();
+    response["SequenceID"] = sequenceId;
+    response["Source"] = destination;
+    response["Type"] = "Response";
+    
+    sendJsonResponse(wsConn, response);
+    
+    // Emit signal to start the imaging simulation
+    emit imagingStarted();
 }

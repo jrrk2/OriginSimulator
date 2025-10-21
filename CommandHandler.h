@@ -55,7 +55,8 @@ private:
     void handleGetEnableManual(const QJsonObject &obj, WebSocketConnection *wsConn, int sequenceId, const QString &source, const QString &destination);
     void handleGetFilter(const QJsonObject &obj, WebSocketConnection *wsConn, int sequenceId, const QString &source, const QString &destination);
     void handleGetDirectConnectPassword(const QJsonObject &obj, WebSocketConnection *wsConn, int sequenceId, const QString &source, const QString &destination);
-    
+    void handleRunSampleCapture(const QJsonObject &obj, WebSocketConnection *wsConn, int sequenceId, const QString &source, const QString &destination);  // ADD THIS
+
     // Helper method to send JSON responses
     void sendJsonResponse(WebSocketConnection *wsConn, const QJsonObject &response);
 };

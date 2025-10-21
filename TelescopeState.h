@@ -132,9 +132,12 @@ public:
 	bool isFakeInitialized = false;
 	bool isInitializing = false;
 	int initializationProgress = 0;  // 0-100%
-  
+
+  void syncTracking() {
+    startTime = QDateTime::currentDateTime().toMSecsSinceEpoch() / 1000.0;
+  }
     TelescopeState() {
-        startTime = QDateTime::currentDateTime().toMSecsSinceEpoch() / 1000.0;
+        syncTracking();
         // Initialize with some random variation like real telescope
         ambientTemperature += (QRandomGenerator::global()->bounded(200) - 100) / 100.0; // ±1°C variation
         cpuTemperature += (QRandomGenerator::global()->bounded(400) - 200) / 100.0;     // ±2°C variation

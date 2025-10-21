@@ -55,6 +55,8 @@ void StatusSender::sendMountStatus(WebSocketConnection *specificClient, int sequ
     mountStatus["Enc0"] = m_telescopeState->enc0;
     mountStatus["Enc1"] = m_telescopeState->enc1;
     mountStatus["ExpiredAt"] = m_telescopeState->getExpiredAt();
+    mountStatus["Ra"] = m_telescopeState->ra;
+    mountStatus["Dec"] = m_telescopeState->dec;
     
     if (sequenceId != -1) {
         // Response to a specific command
