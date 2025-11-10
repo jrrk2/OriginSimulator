@@ -12,6 +12,7 @@
 #include <QPainter>
 #include <cmath>
 #include "CelestronOriginSimulator.h"
+#include "TiffImageGenerator.h"
 #include <QApplication>
 #include <QJsonDocument>
 #include <QJsonObject>
@@ -145,7 +146,7 @@ void CelestronOriginSimulator::onHipsImageReady(const QString& filename) {
     
     // Extract just the filename for the telescope's image system
     QFileInfo fileInfo(filename);
-    QString relativePath = QString("Images/HiPS/%1").arg(fileInfo.fileName());
+    QString relativePath = QString("/SmartScope-1.0/dev2/Images/Astrophotography/%1").arg(fileInfo.fileName());
     
     // Update telescope state with new image location
     m_telescopeState->fileLocation = relativePath;
@@ -211,6 +212,11 @@ void CelestronOriginSimulator::setupConnections() {
         m_imagingTimer->start(1000);
     });
 
+    // Connect imaging completion signal
+    connect(m_commandHandler, &CommandHandler::imagingComplete, this, [this]() {
+        m_imagingTimer->stop();
+    });
+
     // Connect initialization signal
     connect(m_commandHandler, &CommandHandler::initializationStarted, this, [this](bool fakeInit) {
         if (fakeInit) {
@@ -221,6 +227,16 @@ void CelestronOriginSimulator::setupConnections() {
             m_initTimer->start(3000); // Update every 3 seconds like real telescope
         }
     });
+
+    // Add these connections to your existing setupConnections method
+    connect(m_commandHandler, &CommandHandler::taskControllerStatusChanged, this, [this]() {
+	m_statusSender->sendTaskControllerStatusToAll();
+    });
+
+    connect(m_commandHandler, &CommandHandler::imagingComplete, this, [this]() {
+	m_imagingTimer->stop();
+    });
+ 
 }
 
 void CelestronOriginSimulator::setupTimers() {
@@ -297,21 +313,70 @@ void CelestronOriginSimulator::updateSlew() {
     }
 }
 
-void CelestronOriginSimulator::updateImaging() {
-    // Decrement imaging time
-    m_telescopeState->imagingTimeLeft--;
+// =============================================================================
+// CORRECTED updateImaging() function for CelestronOriginSimulator
+// =============================================================================
+// 
+// This fixes the issue where NewImageReady notifications were being sent
+// continuously during sample capture instead of once when complete.
+//
+// Replace the existing updateImaging() function (around line 2917 in sim.txt)
+// with this corrected version.
+// =============================================================================
 
-    // Send a new image notification
-    m_statusSender->sendNewImageReadyToAll();
-    
-    if (m_telescopeState->imagingTimeLeft <= 0) {
-        // Imaging complete
-        m_telescopeState->isImaging = false;
-        m_imagingTimer->stop();
+
+void CelestronOriginSimulator::updateImaging() {
+    if (m_telescopeState->isImaging) {
+        m_telescopeState->imagingTimeLeft--;
         
-        if (false) qDebug() << "Imaging complete";
+        if (m_telescopeState->imagingTimeLeft <= 0) {
+            m_telescopeState->isImaging = false;
+            m_imagingTimer->stop();
+            
+            QString imagePath = m_telescopeState->getNextTIFFFile();
+            m_telescopeState->fileLocation = imagePath;
+            QString fullPath = m_absoluteTempDir + "/" + imagePath;
+            
+	    // No cached image data
+	    TiffImageGenerator::generateSyntheticStarField(fullPath, 150);
+	    qDebug() << "=== SAMPLE CAPTURE COMPLETE ===";
+	    qDebug() << "Generated synthetic star field (no cached image)";
+            
+            m_statusSender->sendNewImageReadyToAll();
+            m_commandHandler->completeImaging();
+        }
     }
 }
+
+// =============================================================================
+// EXPLANATION OF THE FIX
+// =============================================================================
+//
+// BEFORE (INCORRECT):
+// - Sent NewImageReady notification on EVERY timer tick during SAMPLE_CAPTURE
+// - Changed image path continuously
+// - INDI driver received multiple notifications for same capture
+// - Confusing behavior and potential race conditions
+//
+// AFTER (CORRECT):
+// - Only sends NewImageReady notification ONCE when imaging completes
+// - Sets image path once when ready
+// - Matches real telescope behavior
+// - INDI driver receives exactly one notification per capture
+//
+// FLOW:
+// 1. INDI sends RunSampleCapture with ExposureTime=1.0, ISO=800
+// 2. Simulator responds immediately with success
+// 3. imagingStarted signal starts m_imagingTimer (1 second ticks)
+// 4. imagingTimeLeft counts down from (exposureTime + 2 seconds)
+// 5. When imagingTimeLeft reaches 0:
+//    a. Stop timer
+//    b. Set fileLocation to next available image
+//    c. Send NewImageReady notification
+//    d. Complete imaging
+// 6. INDI driver receives notification and downloads image via HTTP
+//
+// =============================================================================
 
 void CelestronOriginSimulator::updateInitialization() {
     // Simulate real telescope initialization progression
@@ -474,7 +539,7 @@ void CelestronOriginSimulator::handleIncomingData(QTcpSocket *socket) {
     QString method = requestParts[0];
     QString path = requestParts[1];
     
-//     if (false) qDebug() << "Origin Protocol Request:" << method << path;
+    if (true) qDebug() << "Origin Protocol Request:" << method << path;
     
     // Check if this is a WebSocket upgrade request
     bool isWebSocketUpgrade = false;
@@ -491,7 +556,7 @@ void CelestronOriginSimulator::handleIncomingData(QTcpSocket *socket) {
     } else if (method == "GET" && path.startsWith("/SmartScope-1.0/dev2/Images/Temp/")) {
         // Handle HTTP image request
         handleHttpImageRequest(socket, path);
-    } else if (method == "GET" && path.contains("/SmartScope-1.0/dev2/Images/Astrophotography/")) {
+    } else if (method == "GET" && path.contains("/SmartScope-1.0/dev2//tmp")) {
         // Handle HTTP astrophotography image request
         handleHttpAstroImageRequest(socket, path);
     } else {
@@ -580,33 +645,44 @@ void CelestronOriginSimulator::handleHttpImageRequest(QTcpSocket *socket, const 
 }
 
 void CelestronOriginSimulator::handleHttpAstroImageRequest(QTcpSocket *socket, const QString &path) {
-    // Parse astrophotography path
-    QStringList pathParts = path.split("/");
-    if (pathParts.size() < 6) {
-        sendHttpResponse(socket, 404, "text/plain", "Invalid path");
-        return;
+    // Normalize path by replacing double slashes
+    QString normalizedPath = path;
+    normalizedPath.replace("//", "/");
+    
+    // Extract just the requested filename
+    QString fileName = QFileInfo(normalizedPath).fileName();
+
+    // Always serve the pre-generated 16-bit TIFF instead
+    QString fullPath = "/tmp/temp_hips_image.tiff";
+
+    // If the TIFF doesn't exist, fall back to regular search
+    if (!QFile::exists(fullPath)) {
+        if (!m_telescopeState->fileLocation.isEmpty() && QFile::exists(m_telescopeState->fileLocation)) {
+            fullPath = m_telescopeState->fileLocation;
+        } else if (QFile::exists(m_absoluteTempDir + "/Images_1.tiff")) {
+            fullPath = m_absoluteTempDir + "/Images_1.tiff";
+        } else {
+            fullPath = QString("%1/%2").arg(m_absoluteTempDir, fileName);
+        }
     }
-    
-    QString directory = pathParts[pathParts.size() - 2];
-    QString fileName = pathParts.last();
-    QString fullPath = QString("simulator_data/Images/Astrophotography/%1/%2").arg(directory, fileName);
-    
-    QFile imageFile(fullPath);
-    if (!imageFile.exists() || !imageFile.open(QIODevice::ReadOnly)) {
+
+    if (!QFile::exists(fullPath)) {
+        qWarning() << "AstroImage request failed - file not found:" << normalizedPath << "->" << fullPath;
         sendHttpResponse(socket, 404, "text/plain", "Image not found");
         return;
     }
-    
+
+    QFile imageFile(fullPath);
+    if (!imageFile.open(QIODevice::ReadOnly)) {
+        sendHttpResponse(socket, 500, "text/plain", "Failed to open image");
+        return;
+    }
+
     QByteArray imageData = imageFile.readAll();
     imageFile.close();
-    
-    QString contentType = "image/tiff";
-    if (fileName.endsWith(".jpg", Qt::CaseInsensitive)) {
-        contentType = "image/jpeg";
-    }
-    
-    sendHttpResponse(socket, 200, contentType, imageData);
-//     if (false) qDebug() << "Served Origin astrophotography image:" << fileName;
+
+    qDebug() << "Serving image/tiff from" << fullPath << "for" << normalizedPath;
+    sendHttpResponse(socket, 200, "image/tiff", imageData);
 }
 
 void CelestronOriginSimulator::sendHttpResponse(QTcpSocket *socket, int statusCode, 
@@ -731,10 +807,13 @@ void CelestronOriginSimulator::sendStatusUpdates() {
     
     if (updateCounter % 3 == 0) {
         QTimer::singleShot(10, this, [this]() {
+	  if (!m_telescopeState->isImaging)
+	    {
             m_statusSender->sendCameraParamsToAll();
             m_telescopeState->sequenceNumber++;
             m_telescopeState->fileLocation = m_telescopeState->getNextImageFile();
             m_statusSender->sendNewImageReadyToAll();
+	    }
         });
     }
     
@@ -859,7 +938,7 @@ void CelestronOriginSimulator::generateCurrentSkyImage() {
     m_mosaicInProgress = true;
     m_mosaicCreator->createCustomMosaic(currentPosition);
     
-    if (false) qDebug() << "Enhanced mosaic generation started...";
+    if (true) qDebug() << "Enhanced mosaic generation started...";
 }
 
 // Method 1: Save to QByteArray as JPEG/PNG (most common)
@@ -890,7 +969,19 @@ void CelestronOriginSimulator::onMosaicComplete(const QImage& mosaic) {
         return;
     }
     
-    if (false) qDebug() << QString("Received mosaic: %1x%2 pixels").arg(mosaic.width()).arg(mosaic.height());
+    if (true) qDebug() << QString("Received mosaic: %1x%2 pixels").arg(mosaic.width()).arg(mosaic.height());
+    QImage fullImage = mosaic.scaled(3056, 2048, Qt::KeepAspectRatio, Qt::SmoothTransformation);
+    QImage paddedImage(3056, 2048, QImage::Format_RGB888);
+    paddedImage.fill(Qt::black);
+    QPainter tiffpainter(&paddedImage);
+    int x = (3056 - fullImage.width()) / 2;
+    int y = (2048 - fullImage.height()) / 2;
+    tiffpainter.drawImage(x, y, fullImage);
+    tiffpainter.end();
+    QByteArray m_fulltiff = saveImageToByteArray(paddedImage, "TIFF", 100);
+    QString tempPath = "/tmp/temp_hips_image.tiff";
+    bool success = TiffImageGenerator::generateOriginFormatTiff(tempPath, paddedImage);
+    qDebug() << "Saved resized image: " << tempPath;               
     
     // Resize to telescope camera resolution (800x600) - Origin camera specs
     QImage telescopeImage = mosaic.scaled(800, 600, Qt::KeepAspectRatio, Qt::SmoothTransformation);

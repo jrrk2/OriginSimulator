@@ -62,7 +62,7 @@ void WebSocketConnection::sendFrame(quint8 opcode, const QByteArray &payload, bo
              << "Size:" << frame.size() << "Payload size:" << payload.size();
     
     qint64 bytesWritten = m_socket->write(frame);
-     if (debug) qDebug() << "Bytes written to socket:" << bytesWritten << "Expected:" << frame.size();
+    if (debug && bytesWritten != frame.size()) qDebug() << "Bytes written to socket:" << bytesWritten << "Expected:" << frame.size();
     
     // Force flush to ensure data is sent immediately
     m_socket->flush();

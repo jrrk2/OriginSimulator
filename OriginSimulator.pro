@@ -6,7 +6,7 @@ TARGET = OriginSimulator
 TEMPLATE = app
 INCLUDEPATH += healpixmirror/src/cxx/Healpix_cxx
 INCLUDEPATH += healpixmirror/src/cxx/cxxsupport
-LIBS += -lnova
+LIBS += -lnova -ltiff
 # For Apple Silicon Macs, use:
 INCLUDEPATH += /opt/homebrew/include
 LIBPATH += /opt/homebrew/lib
@@ -17,6 +17,7 @@ SOURCES += \
     CelestronOriginSimulator.cpp \
     WebSocketConnection.cpp \
     CommandHandler.cpp \
+    TiffImageGenerator.cpp \
     StatusSender.cpp \
     ProperHipsClient.cpp \
     EnhancedMosaicCreator.cpp \
@@ -39,6 +40,7 @@ HEADERS += \
     CelestronOriginSimulator.h \
     WebSocketConnection.h \
     CommandHandler.h \
+    TiffImageGenerator.h \
     StatusSender.h \
     moc_predefs.h \
 

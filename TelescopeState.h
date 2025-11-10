@@ -205,6 +205,12 @@ public:
         return QString("Images/Temp/%1.jpg").arg(imageCounter);
     }
     
+    // Get next image filename (cycles through 0-9 like real telescope)
+    QString getNextTIFFFile() {
+        imageCounter = (imageCounter + 1) % 10;
+        return QString("/tmp/Images_%1.tiff").arg(imageCounter);
+    }
+    
     // Update disk space (slowly decreasing like real usage)
     void updateDiskSpace() {
         // Decrease free space slowly (simulate image storage)

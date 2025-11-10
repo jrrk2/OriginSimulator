@@ -161,9 +161,7 @@ void StatusSender::sendCameraParams(WebSocketConnection *specificClient, int seq
 
 void StatusSender::sendNewImageReady(WebSocketConnection *specificClient) {
     // Update coordinates and get next image
-    m_telescopeState->updateCelestialCoordinates();
-    m_telescopeState->fileLocation = m_telescopeState->getNextImageFile();
-    
+    m_telescopeState->updateCelestialCoordinates();    
     QJsonObject newImage;
     newImage["Command"] = "NewImageReady";
     newImage["Destination"] = "All";
@@ -178,6 +176,8 @@ void StatusSender::sendNewImageReady(WebSocketConnection *specificClient) {
     newImage["ExpiredAt"] = m_telescopeState->getExpiredAt();
     newImage["SequenceID"] = m_telescopeState->getNextSequenceId();
     newImage["Type"] = "Notification";
+
+    qDebug() << "FileLocation" << m_telescopeState->fileLocation;
     
     if (specificClient) {
         sendJsonMessage(specificClient, newImage);

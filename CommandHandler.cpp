@@ -811,6 +811,11 @@ void CommandHandler::handleRunSampleCapture(const QJsonObject &obj, WebSocketCon
     m_telescopeState->isImaging = true;
     m_telescopeState->imagingTimeLeft = static_cast<int>(exposureTime) + 2;  // Exposure + processing time
     
+    // Set TaskController state for sample capture
+    m_telescopeState->state = "SAMPLE_CAPTURE";
+    m_telescopeState->stage = "IN_PROGRESS";
+    m_telescopeState->isReady = true;
+    
     // Send immediate response
     QJsonObject response;
     response["Command"] = "RunSampleCapture";
@@ -824,6 +829,26 @@ void CommandHandler::handleRunSampleCapture(const QJsonObject &obj, WebSocketCon
     
     sendJsonResponse(wsConn, response);
     
+    // Emit signal for task controller status change
+    emit taskControllerStatusChanged();
+    
     // Emit signal to start the imaging simulation
     emit imagingStarted();
+}
+
+void CommandHandler::completeSampleCapture() {
+    m_telescopeState->state = "IDLE";
+    emit taskControllerStatusChanged();
+}
+
+void CommandHandler::completeImaging() {
+    m_telescopeState->isImaging = false;
+    m_telescopeState->imagingTimeLeft = 0;
+    
+    // If we were in SAMPLE_CAPTURE state, return to IDLE
+    if (m_telescopeState->state == "SAMPLE_CAPTURE") {
+        completeSampleCapture();
+    }
+    
+    emit imagingComplete();
 }

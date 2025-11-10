@@ -13,12 +13,16 @@ public:
     explicit CommandHandler(TelescopeState *state, QObject *parent = nullptr);
     
     void processCommand(const QJsonObject &obj, WebSocketConnection *wsConn);
-
+    void completeImaging();
+    void completeSampleCapture();
+  
 signals:
     void slewStarted();
     void imagingStarted();
     void initializationStarted(bool fakeInit); // Add this signal
-  
+    void imagingComplete(); // New signal
+    void taskControllerStatusChanged(); // New signal
+
 private:
     TelescopeState *m_telescopeState;
     

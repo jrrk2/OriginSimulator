@@ -43,7 +43,9 @@ template <> constexpr inline auto CommandHandler::qt_create_metaobjectdata<qt_me
         "",
         "imagingStarted",
         "initializationStarted",
-        "fakeInit"
+        "fakeInit",
+        "imagingComplete",
+        "taskControllerStatusChanged"
     };
 
     QtMocHelpers::UintData qt_methods {
@@ -55,6 +57,10 @@ template <> constexpr inline auto CommandHandler::qt_create_metaobjectdata<qt_me
         QtMocHelpers::SignalData<void(bool)>(4, 2, QMC::AccessPublic, QMetaType::Void, {{
             { QMetaType::Bool, 5 },
         }}),
+        // Signal 'imagingComplete'
+        QtMocHelpers::SignalData<void()>(6, 2, QMC::AccessPublic, QMetaType::Void),
+        // Signal 'taskControllerStatusChanged'
+        QtMocHelpers::SignalData<void()>(7, 2, QMC::AccessPublic, QMetaType::Void),
     };
     QtMocHelpers::UintData qt_properties {
     };
@@ -81,6 +87,8 @@ void CommandHandler::qt_static_metacall(QObject *_o, QMetaObject::Call _c, int _
         case 0: _t->slewStarted(); break;
         case 1: _t->imagingStarted(); break;
         case 2: _t->initializationStarted((*reinterpret_cast< std::add_pointer_t<bool>>(_a[1]))); break;
+        case 3: _t->imagingComplete(); break;
+        case 4: _t->taskControllerStatusChanged(); break;
         default: ;
         }
     }
@@ -90,6 +98,10 @@ void CommandHandler::qt_static_metacall(QObject *_o, QMetaObject::Call _c, int _
         if (QtMocHelpers::indexOfMethod<void (CommandHandler::*)()>(_a, &CommandHandler::imagingStarted, 1))
             return;
         if (QtMocHelpers::indexOfMethod<void (CommandHandler::*)(bool )>(_a, &CommandHandler::initializationStarted, 2))
+            return;
+        if (QtMocHelpers::indexOfMethod<void (CommandHandler::*)()>(_a, &CommandHandler::imagingComplete, 3))
+            return;
+        if (QtMocHelpers::indexOfMethod<void (CommandHandler::*)()>(_a, &CommandHandler::taskControllerStatusChanged, 4))
             return;
     }
 }
@@ -113,14 +125,14 @@ int CommandHandler::qt_metacall(QMetaObject::Call _c, int _id, void **_a)
     if (_id < 0)
         return _id;
     if (_c == QMetaObject::InvokeMetaMethod) {
-        if (_id < 3)
+        if (_id < 5)
             qt_static_metacall(this, _c, _id, _a);
-        _id -= 3;
+        _id -= 5;
     }
     if (_c == QMetaObject::RegisterMethodArgumentMetaType) {
-        if (_id < 3)
+        if (_id < 5)
             *reinterpret_cast<QMetaType *>(_a[0]) = QMetaType();
-        _id -= 3;
+        _id -= 5;
     }
     return _id;
 }
@@ -141,5 +153,17 @@ void CommandHandler::imagingStarted()
 void CommandHandler::initializationStarted(bool _t1)
 {
     QMetaObject::activate<void>(this, &staticMetaObject, 2, nullptr, _t1);
+}
+
+// SIGNAL 3
+void CommandHandler::imagingComplete()
+{
+    QMetaObject::activate(this, &staticMetaObject, 3, nullptr);
+}
+
+// SIGNAL 4
+void CommandHandler::taskControllerStatusChanged()
+{
+    QMetaObject::activate(this, &staticMetaObject, 4, nullptr);
 }
 QT_WARNING_POP
