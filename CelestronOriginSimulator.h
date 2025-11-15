@@ -13,8 +13,7 @@
 #include "WebSocketConnection.h"
 #include "CommandHandler.h"
 #include "StatusSender.h"
-#include "ProperHipsClient.h"  // Changed from RubinHipsClient
-#include "EnhancedMosaicCreator.h"
+#include "DSSFitsManager.h"
 
 // Constants
 const QString SERVER_NAME = "CelestronOriginSimulator";
@@ -37,7 +36,6 @@ private slots:
     void sendBroadcast();
     void sendStatusUpdates();
     void updateSlew();
-    void updateImaging();
     void onWebSocketDisconnected();
     void processWebSocketCommand(const QString &message);
     void handleWebSocketPing(const QByteArray &payload);
@@ -45,12 +43,6 @@ private slots:
     void handleWebSocketTimeout();
     void checkConnectionHealth();
     
-    // ProperHips integration slots (renamed from Rubin)
-    void onHipsImageReady(const QString& filename);
-    void onHipsTilesAvailable(const QStringList& filenames);
-    void onHipsFetchError(const QString& error_message);
-    void onHipsTestingComplete();
-
 private:
     // Core components
     QTcpServer *m_tcpServer;
@@ -58,7 +50,7 @@ private:
     TelescopeState *m_telescopeState;
     CommandHandler *m_commandHandler;
     StatusSender *m_statusSender;
-    ProperHipsClient* m_hipsClient;  // Changed from m_rubinClient
+    DSSFitsManager* m_dssManager;
     QByteArray m_imageData;
 
     // WebSocket management
@@ -73,9 +65,6 @@ private:
     QTimer *m_connectionHealthTimer;
     QTimer *m_initTimer;
 
-    EnhancedMosaicCreator* m_mosaicCreator;
-    bool m_mosaicInProgress;
-
     int m_initUpdateCount = 0;
 
     int broadcast_id = qrand() % 90 + 10;
@@ -85,7 +74,11 @@ private:
     void updateInitialization();
     void completeInitialization();
     void failInitialization();
-
+    void setupDSSIntegration();
+    void fetchDSSImageForPosition(const SkyPosition& position);
+    void onDSSImageReady(const QByteArray& tiffData);
+    void onDSSError(const QString& error);
+  
     // Absolute paths for image serving
     QString m_absoluteTempDir;
     QString m_absoluteAstroDir;
@@ -106,14 +99,7 @@ private:
     void printRuntimeInfo();
     void openSimulatorDirectoryInFinder();
     void cleanupApplicationSupportFiles();
-    void setupHipsIntegration();  // Renamed from setupRubinIntegration
-    
-    // HiPS image management
-    void fetchHipsImagesForPosition(const SkyPosition& position);
-    QString getBestAvailableSurvey() const;
-    void generateCurrentSkyImage();
-    void onMosaicComplete(const QImage& mosaic);
-    void addTelescopeOverlay(QPainter& painter, const QImage& image);
+
 };
 
 #endif // CELESTRONORIGINSIMULATOR_H

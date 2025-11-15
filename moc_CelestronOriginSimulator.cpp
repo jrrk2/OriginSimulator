@@ -1,14 +1,12 @@
 /****************************************************************************
 ** Meta object code from reading C++ file 'CelestronOriginSimulator.h'
 **
-** Created by: The Qt Meta Object Compiler version 69 (Qt 6.9.0)
+** Created by: The Qt Meta Object Compiler version 69 (Qt 6.9.3)
 **
 ** WARNING! All changes made in this file will be lost!
 *****************************************************************************/
 
 #include "CelestronOriginSimulator.h"
-#include <QtNetwork/QSslError>
-#include <QtGui/qtextcursor.h>
 #include <QtCore/qmetatype.h>
 
 #include <QtCore/qtmochelpers.h>
@@ -20,7 +18,7 @@
 #if !defined(Q_MOC_OUTPUT_REVISION)
 #error "The header file 'CelestronOriginSimulator.h' doesn't include <QObject>."
 #elif Q_MOC_OUTPUT_REVISION != 69
-#error "This file was generated using the moc from 6.9.0. It"
+#error "This file was generated using the moc from 6.9.3. It"
 #error "cannot be used with the include files from this version of Qt."
 #error "(The moc has changed too much.)"
 #endif
@@ -49,7 +47,6 @@ template <> constexpr inline auto CelestronOriginSimulator::qt_create_metaobject
         "sendBroadcast",
         "sendStatusUpdates",
         "updateSlew",
-        "updateImaging",
         "onWebSocketDisconnected",
         "processWebSocketCommand",
         "message",
@@ -57,14 +54,7 @@ template <> constexpr inline auto CelestronOriginSimulator::qt_create_metaobject
         "payload",
         "handleWebSocketPong",
         "handleWebSocketTimeout",
-        "checkConnectionHealth",
-        "onHipsImageReady",
-        "filename",
-        "onHipsTilesAvailable",
-        "filenames",
-        "onHipsFetchError",
-        "error_message",
-        "onHipsTestingComplete"
+        "checkConnectionHealth"
     };
 
     QtMocHelpers::UintData qt_methods {
@@ -80,40 +70,24 @@ template <> constexpr inline auto CelestronOriginSimulator::qt_create_metaobject
         QtMocHelpers::SlotData<void()>(7, 2, QMC::AccessPrivate, QMetaType::Void),
         // Slot 'updateSlew'
         QtMocHelpers::SlotData<void()>(8, 2, QMC::AccessPrivate, QMetaType::Void),
-        // Slot 'updateImaging'
-        QtMocHelpers::SlotData<void()>(9, 2, QMC::AccessPrivate, QMetaType::Void),
         // Slot 'onWebSocketDisconnected'
-        QtMocHelpers::SlotData<void()>(10, 2, QMC::AccessPrivate, QMetaType::Void),
+        QtMocHelpers::SlotData<void()>(9, 2, QMC::AccessPrivate, QMetaType::Void),
         // Slot 'processWebSocketCommand'
-        QtMocHelpers::SlotData<void(const QString &)>(11, 2, QMC::AccessPrivate, QMetaType::Void, {{
-            { QMetaType::QString, 12 },
+        QtMocHelpers::SlotData<void(const QString &)>(10, 2, QMC::AccessPrivate, QMetaType::Void, {{
+            { QMetaType::QString, 11 },
         }}),
         // Slot 'handleWebSocketPing'
-        QtMocHelpers::SlotData<void(const QByteArray &)>(13, 2, QMC::AccessPrivate, QMetaType::Void, {{
-            { QMetaType::QByteArray, 14 },
+        QtMocHelpers::SlotData<void(const QByteArray &)>(12, 2, QMC::AccessPrivate, QMetaType::Void, {{
+            { QMetaType::QByteArray, 13 },
         }}),
         // Slot 'handleWebSocketPong'
-        QtMocHelpers::SlotData<void(const QByteArray &)>(15, 2, QMC::AccessPrivate, QMetaType::Void, {{
-            { QMetaType::QByteArray, 14 },
+        QtMocHelpers::SlotData<void(const QByteArray &)>(14, 2, QMC::AccessPrivate, QMetaType::Void, {{
+            { QMetaType::QByteArray, 13 },
         }}),
         // Slot 'handleWebSocketTimeout'
-        QtMocHelpers::SlotData<void()>(16, 2, QMC::AccessPrivate, QMetaType::Void),
+        QtMocHelpers::SlotData<void()>(15, 2, QMC::AccessPrivate, QMetaType::Void),
         // Slot 'checkConnectionHealth'
-        QtMocHelpers::SlotData<void()>(17, 2, QMC::AccessPrivate, QMetaType::Void),
-        // Slot 'onHipsImageReady'
-        QtMocHelpers::SlotData<void(const QString &)>(18, 2, QMC::AccessPrivate, QMetaType::Void, {{
-            { QMetaType::QString, 19 },
-        }}),
-        // Slot 'onHipsTilesAvailable'
-        QtMocHelpers::SlotData<void(const QStringList &)>(20, 2, QMC::AccessPrivate, QMetaType::Void, {{
-            { QMetaType::QStringList, 21 },
-        }}),
-        // Slot 'onHipsFetchError'
-        QtMocHelpers::SlotData<void(const QString &)>(22, 2, QMC::AccessPrivate, QMetaType::Void, {{
-            { QMetaType::QString, 23 },
-        }}),
-        // Slot 'onHipsTestingComplete'
-        QtMocHelpers::SlotData<void()>(24, 2, QMC::AccessPrivate, QMetaType::Void),
+        QtMocHelpers::SlotData<void()>(16, 2, QMC::AccessPrivate, QMetaType::Void),
     };
     QtMocHelpers::UintData qt_properties {
     };
@@ -142,17 +116,12 @@ void CelestronOriginSimulator::qt_static_metacall(QObject *_o, QMetaObject::Call
         case 2: _t->sendBroadcast(); break;
         case 3: _t->sendStatusUpdates(); break;
         case 4: _t->updateSlew(); break;
-        case 5: _t->updateImaging(); break;
-        case 6: _t->onWebSocketDisconnected(); break;
-        case 7: _t->processWebSocketCommand((*reinterpret_cast< std::add_pointer_t<QString>>(_a[1]))); break;
-        case 8: _t->handleWebSocketPing((*reinterpret_cast< std::add_pointer_t<QByteArray>>(_a[1]))); break;
-        case 9: _t->handleWebSocketPong((*reinterpret_cast< std::add_pointer_t<QByteArray>>(_a[1]))); break;
-        case 10: _t->handleWebSocketTimeout(); break;
-        case 11: _t->checkConnectionHealth(); break;
-        case 12: _t->onHipsImageReady((*reinterpret_cast< std::add_pointer_t<QString>>(_a[1]))); break;
-        case 13: _t->onHipsTilesAvailable((*reinterpret_cast< std::add_pointer_t<QStringList>>(_a[1]))); break;
-        case 14: _t->onHipsFetchError((*reinterpret_cast< std::add_pointer_t<QString>>(_a[1]))); break;
-        case 15: _t->onHipsTestingComplete(); break;
+        case 5: _t->onWebSocketDisconnected(); break;
+        case 6: _t->processWebSocketCommand((*reinterpret_cast< std::add_pointer_t<QString>>(_a[1]))); break;
+        case 7: _t->handleWebSocketPing((*reinterpret_cast< std::add_pointer_t<QByteArray>>(_a[1]))); break;
+        case 8: _t->handleWebSocketPong((*reinterpret_cast< std::add_pointer_t<QByteArray>>(_a[1]))); break;
+        case 9: _t->handleWebSocketTimeout(); break;
+        case 10: _t->checkConnectionHealth(); break;
         default: ;
         }
     }
@@ -189,14 +158,14 @@ int CelestronOriginSimulator::qt_metacall(QMetaObject::Call _c, int _id, void **
     if (_id < 0)
         return _id;
     if (_c == QMetaObject::InvokeMetaMethod) {
-        if (_id < 16)
+        if (_id < 11)
             qt_static_metacall(this, _c, _id, _a);
-        _id -= 16;
+        _id -= 11;
     }
     if (_c == QMetaObject::RegisterMethodArgumentMetaType) {
-        if (_id < 16)
+        if (_id < 11)
             qt_static_metacall(this, _c, _id, _a);
-        _id -= 16;
+        _id -= 11;
     }
     return _id;
 }

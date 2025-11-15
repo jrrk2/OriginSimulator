@@ -35,23 +35,13 @@ CelestronOriginSimulator::CelestronOriginSimulator(QObject *parent) : QObject(pa
     m_tcpServer = new QTcpServer(this);
     m_udpSocket = new QUdpSocket(this);
 
-    // Initialize headless mosaic creator
-    m_mosaicCreator = new EnhancedMosaicCreator(this); // Headless mode
-    m_mosaicInProgress = false;
-    
-    // Connect mosaic completion signal
-    connect(m_mosaicCreator, &EnhancedMosaicCreator::mosaicComplete, 
-            this, &CelestronOriginSimulator::onMosaicComplete);
-    
-    qDebug() << "Headless Enhanced Mosaic Creator initialized";
-    
-    setupHipsIntegration();  // Changed from setupRubinIntegration
+    // Initialize DSS integration (replaces HiPS and mosaic creator)
+    setupDSSIntegration();
     
     if (m_tcpServer->listen(QHostAddress::Any, SERVER_PORT)) {
         setupConnections();
         setupTimers();
         
-        // First broadcast immediately
         QTimer::singleShot(100, this, &CelestronOriginSimulator::sendBroadcast);
     } else {
         qDebug() << "Failed to start Origin simulator:" << m_tcpServer->errorString();
@@ -65,29 +55,47 @@ CelestronOriginSimulator::~CelestronOriginSimulator() {
     qDeleteAll(m_webSocketClients);
 }
 
-void CelestronOriginSimulator::setupHipsIntegration() {
-    m_hipsClient = new ProperHipsClient(this);
+void CelestronOriginSimulator::setupDSSIntegration() {
+    m_dssManager = new DSSFitsManager(this);
     
-    // Set up HiPS image directory to integrate with existing simulator structure
-    QString homeDir = QDir::homePath();
-    QString appSupportDir = QDir(homeDir).absoluteFilePath("Library/Application Support/OriginSimulator");
-    QString hipsDir = QDir(appSupportDir).absoluteFilePath("Images/HiPS");
+    qDebug() << "========================================";
+    qDebug() << "DSS FITS Manager initialized";
+    qDebug() << "Cache directory:" << m_dssManager->getCacheDir();
     
-    // Create the HiPS directory
-    QDir().mkpath(hipsDir);
+    QList<CachedFitsImage> cached = m_dssManager->getCachedImages();
+    qDebug() << "Cached images:" << cached.size();
     
-    // Connect ProperHipsClient signals to our slots
-    connect(m_hipsClient, &ProperHipsClient::testingComplete, 
-            this, &CelestronOriginSimulator::onHipsTestingComplete);
+    if (!cached.isEmpty()) {
+        qDebug() << "Cache contents:";
+        for (const CachedFitsImage& img : cached) {
+            qDebug() << QString("  - RA=%1°, Dec=%2°, Size=%3x%4', Fetched=%5")
+                        .arg(img.center_ra_deg, 0, 'f', 2)
+                        .arg(img.center_dec_deg, 0, 'f', 2)
+                        .arg(img.width_arcmin, 0, 'f', 0)
+                        .arg(img.height_arcmin, 0, 'f', 0)
+                        .arg(img.fetchTime.toString("yyyy-MM-dd hh:mm"));
+        }
+    }
     
-    qDebug() << "ProperHips integration initialized";
-    qDebug() << "HiPS images will be saved to:" << hipsDir;
-
+    qint64 cacheSize = m_dssManager->getCacheSize();
+    qDebug() << QString("Total cache size: %1 MB").arg(cacheSize / 1024.0 / 1024.0, 0, 'f', 2);
+    qDebug() << "========================================";
+    
+    // Connect signals
+    connect(m_dssManager, &DSSFitsManager::imageReady,
+            this, &CelestronOriginSimulator::onDSSImageReady);
+    connect(m_dssManager, &DSSFitsManager::fetchError,
+            this, &CelestronOriginSimulator::onDSSError);
+    connect(m_dssManager, &DSSFitsManager::cacheHit,
+            this, [](const QString& info) { qDebug() << "📦" << info; });
+    connect(m_dssManager, &DSSFitsManager::cacheMiss,
+            this, [](const QString& info) { qDebug() << "🌐" << info; });
+    
     // Set initial coordinates
     m_telescopeState->ra = m_telescopeState->baseRA;
     m_telescopeState->dec = m_telescopeState->baseDec;
-
-    // Start with initial position fetch
+    
+    // Fetch initial position
     SkyPosition initialPos = {
         m_telescopeState->ra * 180.0 / M_PI,
         m_telescopeState->dec * 180.0 / M_PI,
@@ -95,108 +103,93 @@ void CelestronOriginSimulator::setupHipsIntegration() {
         "Telescope starting position"
     };
     
-    fetchHipsImagesForPosition(initialPos);
+    fetchDSSImageForPosition(initialPos);
 }
 
-void CelestronOriginSimulator::fetchHipsImagesForPosition(const SkyPosition& position) {
-    qDebug() << QString("Fetching HiPS images for position: RA=%1°, Dec=%2°")
+void CelestronOriginSimulator::fetchDSSImageForPosition(const SkyPosition& position) {
+    qDebug() << QString("🔭 Slew to: RA=%1°, Dec=%2°")
                 .arg(position.ra_deg, 0, 'f', 6)
                 .arg(position.dec_deg, 0, 'f', 6);
     
-    // Use the best available survey
-    QString bestSurvey = getBestAvailableSurvey();
-    if (bestSurvey.isEmpty()) {
-        qDebug() << "No working surveys available";
-        return;
-    }
-    
-    // Test the survey at this position
-    m_hipsClient->testSurveyAtPosition(bestSurvey, position);
-    
-    generateCurrentSkyImage();
+    // Manager will automatically determine cache hit/miss
+    m_dssManager->fetchImageForPosition(position.ra_deg, position.dec_deg);
 }
 
-QString CelestronOriginSimulator::getBestAvailableSurvey() const {
-    // Get working surveys from previous tests, or use defaults
-    QStringList workingSurveys = m_hipsClient->getWorkingSurveys();
+void CelestronOriginSimulator::onDSSImageReady(const QByteArray& tiffData) {
+    qDebug() << "✅ DSS RGB TIFF ready:" << tiffData.size() << "bytes";
     
-    if (workingSurveys.isEmpty()) {
-        // Default to known working surveys
-        QStringList defaultSurveys = {"DSS2_Color", "2MASS_Color", "2MASS_J"};
-        return defaultSurveys.first();
-    }
+    // Store TIFF data for HTTP serving
+    m_imageData = tiffData;
     
-    // Prefer color surveys over single-band
-    QStringList preferredOrder = {"DSS2_Color", "2MASS_Color", "Mellinger_Color", 
-                                  "2MASS_J", "DSS2_Red", "Gaia_DR3"};
-    
-    for (const QString& preferred : preferredOrder) {
-        if (workingSurveys.contains(preferred)) {
-            return preferred;
-        }
-    }
-    
-    return workingSurveys.first();
-}
-
-// Slot implementations for HiPS integration
-void CelestronOriginSimulator::onHipsImageReady(const QString& filename) {
-    qDebug() << "HiPS Observatory image ready:" << filename;
-    
-    // Extract just the filename for the telescope's image system
-    QFileInfo fileInfo(filename);
-    QString relativePath = QString("Images/HiPS/%1").arg(fileInfo.fileName());
-    
-    // Update telescope state with new image location
-    m_telescopeState->fileLocation = relativePath;
-    m_telescopeState->imageType = "HIPS_IMAGE";
+    // Update telescope state
+    m_telescopeState->fileLocation = m_telescopeState->getNextImageFile();
+    m_telescopeState->imageType = "LIVE";
     m_telescopeState->sequenceNumber++;
-
-    // Notify all connected clients about the new image
+    
+    // Notify clients
     m_statusSender->sendNewImageReadyToAll();
     
-    qDebug() << "Telescope updated with HiPS image:" << relativePath;
+    qDebug() << "📸 Image ready:" << m_telescopeState->fileLocation;
 }
 
-void CelestronOriginSimulator::onHipsTilesAvailable(const QStringList& filenames) {
-    qDebug() << "HiPS Observatory tiles available:" << filenames.size();
+void CelestronOriginSimulator::onDSSError(const QString& error) {
+    qDebug() << "❌ DSS fetch error:" << error;
     
-    if (!filenames.isEmpty()) {
-        // Use the first available tile
-        onHipsImageReady(filenames.first());
-        
-        // Log all available files
-        for (const QString& file : filenames) {
-            QFileInfo info(file);
-            qDebug() << "  Available:" << info.fileName() << "(" << info.size() << "bytes)";
-        }
-    }
-}
-
-void CelestronOriginSimulator::onHipsFetchError(const QString& error_message) {
-    qDebug() << "HiPS Observatory fetch error:" << error_message;
-    
-    // Send error notification to clients
+    // Send warning notification - same format as original
     QJsonObject errorNotification;
     errorNotification["Command"] = "Warning";
     errorNotification["Destination"] = "All";
-    errorNotification["Source"] = "HipsImageServer";
+    errorNotification["Source"] = "ImageServer";
     errorNotification["Type"] = "Notification";
-    errorNotification["Message"] = "HiPS Observatory data unavailable: " + error_message;
+    errorNotification["Message"] = "Image data unavailable: " + error;
     errorNotification["ExpiredAt"] = m_telescopeState->getExpiredAt();
     errorNotification["SequenceID"] = m_telescopeState->getNextSequenceId();
     
     m_statusSender->sendJsonMessageToAll(errorNotification);
 }
 
-void CelestronOriginSimulator::onHipsTestingComplete() {
-    qDebug() << "HiPS testing completed";
+void CelestronOriginSimulator::updateSlew() {
+    static int slewProgress = 0;
     
-    // Print summary of results
-    m_hipsClient->printSummary();
+    slewProgress += 20;
     
-    // Save results for debugging
-    m_hipsClient->saveResults("hips_test_results.csv");
+    if (slewProgress >= 100) {
+        qDebug() << "Before update - RA:" << m_telescopeState->ra << "Dec:" << m_telescopeState->dec;
+        qDebug() << "Target RA:" << m_telescopeState->targetRa << "Target Dec:" << m_telescopeState->targetDec;
+        
+        // Slew complete
+        m_telescopeState->isGotoOver = true;
+        m_telescopeState->isSlewing = false;
+        m_telescopeState->baseRA = m_telescopeState->targetRa;
+        m_telescopeState->baseDec = m_telescopeState->targetDec;
+        m_telescopeState->ra = m_telescopeState->baseRA;
+        m_telescopeState->dec = m_telescopeState->baseDec;
+        
+        // Stop the timer
+        m_slewTimer->stop();
+        slewProgress = 0;
+
+        qDebug() << "After update - RA:" << m_telescopeState->ra << "Dec:" << m_telescopeState->dec;
+        
+        // Update mount status
+        m_statusSender->sendMountStatusToAll();
+
+        // Fetch DSS image for new position (replaces HiPS fetch)
+        QTimer::singleShot(100, this, [this]() {
+            SkyPosition newPos = {
+                m_telescopeState->targetRa * 180.0 / M_PI,
+                m_telescopeState->targetDec * 180.0 / M_PI,
+                "Slew_Target",
+                "Position after telescope slew"
+            };
+            
+            qDebug() << "🎯 Using target coordinates for DSS fetch - RA:" 
+                     << newPos.ra_deg << "Dec:" << newPos.dec_deg;
+            fetchDSSImageForPosition(newPos);
+        });
+        
+        qDebug() << "🎯 Slew complete";
+    }
 }
 
 void CelestronOriginSimulator::setupConnections() {
@@ -240,7 +233,7 @@ void CelestronOriginSimulator::setupTimers() {
     
     // Create imaging timer
     m_imagingTimer = new QTimer(this);
-    connect(m_imagingTimer, &QTimer::timeout, this, &CelestronOriginSimulator::updateImaging);
+    //    connect(m_imagingTimer, &QTimer::timeout, this, &CelestronOriginSimulator::updateImaging);
 
     // Create initialization timer
     m_initTimer = new QTimer(this);
@@ -248,70 +241,6 @@ void CelestronOriginSimulator::setupTimers() {
     connect(m_initTimer, &QTimer::timeout, this, &CelestronOriginSimulator::updateInitialization);
 }
 
-void CelestronOriginSimulator::updateSlew() {
-    static int slewProgress = 0;
-    
-    // Simulate slew progress
-    slewProgress += 20;  // 20% progress per 500ms
-    
-    if (slewProgress >= 100) {
-        qDebug() << "Before update - RA:" << m_telescopeState->ra << "Dec:" << m_telescopeState->dec;
-        qDebug() << "Target RA:" << m_telescopeState->targetRa << "Target Dec:" << m_telescopeState->targetDec;
-        
-        // Slew complete
-        m_telescopeState->isGotoOver = true;
-        m_telescopeState->isSlewing = false;
-        m_telescopeState->baseRA = m_telescopeState->targetRa;
-        m_telescopeState->baseDec = m_telescopeState->targetDec;
-        m_telescopeState->ra = m_telescopeState->baseRA;
-        m_telescopeState->dec = m_telescopeState->baseDec;
-        
-        // Stop the timer
-        m_slewTimer->stop();
-        slewProgress = 0;
-
-        qDebug() << "After update - RA:" << m_telescopeState->ra << "Dec:" << m_telescopeState->dec;
-        
-        // Update mount status
-        m_statusSender->sendMountStatusToAll();
-
-        // Add delay to ensure coordinates are fully updated
-        QTimer::singleShot(100, this, [this]() {
-            if (m_hipsClient) {
-                qDebug() << "🎯 Slew complete - fetching HiPS data for new position";
-                
-                // Convert telescope coordinates to SkyPosition
-                SkyPosition newPos = {
-                    m_telescopeState->targetRa * 180.0 / M_PI,  // Convert radians to degrees
-                    m_telescopeState->targetDec * 180.0 / M_PI,
-                    "Slew_Target",
-                    "Position after telescope slew"
-                };
-                
-                qDebug() << "🎯 Using target coordinates for HiPS fetch - RA:" << newPos.ra_deg << "Dec:" << newPos.dec_deg;
-                fetchHipsImagesForPosition(newPos);
-            }
-        });
-        
-        qDebug() << "🎯 Slew complete";
-    }
-}
-
-void CelestronOriginSimulator::updateImaging() {
-    // Decrement imaging time
-    m_telescopeState->imagingTimeLeft--;
-
-    // Send a new image notification
-    m_statusSender->sendNewImageReadyToAll();
-    
-    if (m_telescopeState->imagingTimeLeft <= 0) {
-        // Imaging complete
-        m_telescopeState->isImaging = false;
-        m_imagingTimer->stop();
-        
-        qDebug() << "Imaging complete";
-    }
-}
 
 void CelestronOriginSimulator::updateInitialization() {
     // Simulate real telescope initialization progression
@@ -805,61 +734,6 @@ void CelestronOriginSimulator::handleWebSocketTimeout() {
     }
 }
 
-void CelestronOriginSimulator::generateCurrentSkyImage() {
-    // Skip if already generating
-    if (m_mosaicInProgress) {
-        qDebug() << "Mosaic generation already in progress, skipping";
-        return;
-    }
-    
-    // Get current telescope pointing
-    double ra_rad = m_telescopeState->ra;
-    double dec_rad = m_telescopeState->dec;
-    double ra_deg = ra_rad * 180.0 / M_PI;
-    double dec_deg = dec_rad * 180.0 / M_PI;
-    
-    qDebug() << QString("Generating enhanced mosaic for RA=%1°, Dec=%2°")
-                .arg(ra_deg, 0, 'f', 6)
-                .arg(dec_deg, 0, 'f', 6);
-    
-    // Create SkyPosition using the existing structure
-    SkyPosition currentPosition = {
-        ra_deg,
-        dec_deg,
-        QString("Live_Image_%1").arg(m_telescopeState->imageCounter),
-        QString("Real-time telescope position at %1").arg(QDateTime::currentDateTime().toString("hh:mm:ss"))
-    };
-    
-    // Convert coordinates to string format for the mosaic creator
-    double ra_hours = ra_deg / 15.0;
-    int ra_h = static_cast<int>(ra_hours);
-    int ra_m = static_cast<int>((ra_hours - ra_h) * 60);
-    double ra_s = ((ra_hours - ra_h) * 60 - ra_m) * 60;
-    
-    bool dec_negative = dec_deg < 0;
-    double abs_dec = std::abs(dec_deg);
-    int dec_d = static_cast<int>(abs_dec);
-    int dec_m = static_cast<int>((abs_dec - dec_d) * 60);
-    double dec_s = ((abs_dec - dec_d) * 60 - dec_m) * 60;
-    
-    QString raText = QString("%1h%2m%3s")
-                     .arg(ra_h).arg(ra_m, 2, 10, QChar('0')).arg(ra_s, 0, 'f', 1);
-    
-    QString decText = QString("%1%2d%3m%4s")
-                      .arg(dec_negative ? "-" : "+")
-                      .arg(dec_d).arg(dec_m, 2, 10, QChar('0')).arg(dec_s, 0, 'f', 1);
-    
-    qDebug() << QString("Converted coordinates: %1, %2").arg(raText).arg(decText);
-    
-    // Set coordinates in the headless mosaic creator
-    m_mosaicCreator->setCustomCoordinates(raText, decText, currentPosition.name);
-    
-    // Start mosaic creation (this will use the existing 3x3 tile logic)
-    m_mosaicInProgress = true;
-    m_mosaicCreator->createCustomMosaic(currentPosition);
-    
-    qDebug() << "Enhanced mosaic generation started...";
-}
 
 // Method 1: Save to QByteArray as JPEG/PNG (most common)
 QByteArray saveImageToByteArray(const QImage& image, const QString& format = "JPEG", int quality = 95) {
@@ -878,109 +752,6 @@ QByteArray saveImageToByteArray(const QImage& image, const QString& format = "JP
     }
     
     return byteArray;
-}
-
-void CelestronOriginSimulator::onMosaicComplete(const QImage& mosaic) {
-    qDebug() << "Enhanced mosaic complete, processing for telescope image";
-    
-    if (mosaic.isNull()) {
-        qDebug() << "Received null mosaic image";
-        m_mosaicInProgress = false;
-        return;
-    }
-    
-    qDebug() << QString("Received mosaic: %1x%2 pixels").arg(mosaic.width()).arg(mosaic.height());
-    
-    // Resize to telescope camera resolution (800x600) - Origin camera specs
-    QImage telescopeImage = mosaic.scaled(800, 600, Qt::KeepAspectRatio, Qt::SmoothTransformation);
-    
-    // Fill any letterbox areas with black (if aspect ratios don't match)
-    if (telescopeImage.width() != 800 || telescopeImage.height() != 600) {
-        QImage finalImage(800, 600, QImage::Format_RGB888);
-        finalImage.fill(Qt::black);
-        
-        QPainter painter(&finalImage);
-        int x = (800 - telescopeImage.width()) / 2;
-        int y = (600 - telescopeImage.height()) / 2;
-        painter.drawImage(x, y, telescopeImage);
-        painter.end();
-        
-        telescopeImage = finalImage;
-    }
-    
-    // Add telescope-specific overlay
-    QPainter painter(&telescopeImage);
-    addTelescopeOverlay(painter, telescopeImage);
-    painter.end();
-    
-    m_imageData = saveImageToByteArray(telescopeImage, "JPEG", 95);
-  
-    m_mosaicInProgress = false;
-}
-
-void CelestronOriginSimulator::addTelescopeOverlay(QPainter& painter, const QImage& image) {
-    // Add crosshairs at center (where the exact coordinates are)
-    painter.setPen(QPen(Qt::yellow, 2));
-    int centerX = image.width() / 2;
-    int centerY = image.height() / 2;
-    
-    painter.drawLine(centerX - 30, centerY, centerX + 30, centerY);
-    painter.drawLine(centerX, centerY - 30, centerX, centerY + 30);
-    
-    // Add coordinate info (top left)
-    painter.setPen(Qt::white);
-    painter.setFont(QFont("Arial", 10, QFont::Bold));
-    
-    double ra_deg = m_telescopeState->ra * 180.0 / M_PI;
-    double dec_deg = m_telescopeState->dec * 180.0 / M_PI;
-    
-    QString coordText = QString("RA: %1° Dec: %2°")
-                       .arg(ra_deg, 0, 'f', 3)
-                       .arg(dec_deg, 0, 'f', 3);
-    
-    painter.drawText(10, 20, coordText);
-    
-    // Add timestamp (bottom left)
-    QString timeText = QDateTime::currentDateTime().toString("yyyy-MM-dd hh:mm:ss UTC");
-    painter.drawText(10, image.height() - 25, timeText);
-    
-    // Add exposure info (bottom left, second line)
-    QString exposureText = QString("ISO:%1 EXP:%2s BIN:%3x%3")
-                          .arg(m_telescopeState->iso)
-                          .arg(m_telescopeState->exposure, 0, 'f', 1)
-                          .arg(m_telescopeState->binning);
-    painter.drawText(10, image.height() - 10, exposureText);
-    
-    // Add "REAL HiPS DATA" label (top right)
-    painter.setPen(Qt::green);
-    painter.setFont(QFont("Arial", 8, QFont::Bold));
-    painter.drawText(image.width() - 120, 20, "REAL HiPS DATA");
-    
-    // Add precision indicator (top right, second line)
-    painter.setPen(Qt::cyan);
-    painter.setFont(QFont("Arial", 7));
-    painter.drawText(image.width() - 120, 35, "1.61\"/pixel precision");
-    
-    // Add frame number (bottom right)
-    painter.setPen(Qt::white);
-    painter.setFont(QFont("Arial", 8));
-    QString frameText = QString("Frame %1").arg(m_telescopeState->imageCounter % 10);
-    painter.drawText(image.width() - 80, image.height() - 10, frameText);
-    
-    // Add center marker with coordinate precision
-    painter.setPen(QPen(Qt::red, 1));
-    painter.drawEllipse(centerX - 2, centerY - 2, 4, 4);
-    
-    // Add FOV indicator (corner markers)
-    painter.setPen(QPen(Qt::gray, 1));
-    painter.drawLine(5, 5, 25, 5);      // Top left
-    painter.drawLine(5, 5, 5, 25);
-    painter.drawLine(image.width()-25, 5, image.width()-5, 5);  // Top right
-    painter.drawLine(image.width()-5, 5, image.width()-5, 25);
-    painter.drawLine(5, image.height()-25, 5, image.height()-5);  // Bottom left
-    painter.drawLine(5, image.height()-5, 25, image.height()-5);
-    painter.drawLine(image.width()-5, image.height()-25, image.width()-5, image.height()-5);  // Bottom right
-    painter.drawLine(image.width()-25, image.height()-5, image.width()-5, image.height()-5);
 }
 
 // And call it in the constructor:

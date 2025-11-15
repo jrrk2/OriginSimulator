@@ -6,6 +6,7 @@ TARGET = OriginSimulator
 TEMPLATE = app
 INCLUDEPATH += healpixmirror/src/cxx/Healpix_cxx
 INCLUDEPATH += healpixmirror/src/cxx/cxxsupport
+INCLUDEPATH += /opt/homebrew/include
 
 # Sources
 SOURCES += \
@@ -28,7 +29,8 @@ SOURCES += \
     moc_ProperHipsClient.cpp \
     moc_StatusSender.cpp \
     moc_WebSocketConnection.cpp \
-   
+    DSSFitsManager.cpp \
+    
 # Headers
 HEADERS += \
     TelescopeState.h \
@@ -37,10 +39,12 @@ HEADERS += \
     CommandHandler.h \
     StatusSender.h \
     moc_predefs.h \
-
+    DSSFitsManager.h \
+    
 # For Xcode project generation
 macx {
     QMAKE_MACOSX_DEPLOYMENT_TARGET = 10.15
+    LIBS += -lcfitsio
 }
 
 # Enable debug output
