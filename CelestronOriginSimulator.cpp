@@ -150,7 +150,20 @@ void CelestronOriginSimulator::onDSSError(const QString& error) {
 
 void CelestronOriginSimulator::updateSlew() {
     static int slewProgress = 0;
+    static int callCount = 0;
+    callCount++;
     
+    // Debug: Print every 50 calls (every 5 seconds)
+    if (callCount % 50 == 0) {
+        qDebug() << "updateSlew() called" << callCount << "times";
+    }
+    
+    // Update slew motion if active
+
+    if (m_telescopeState->isSlewing) {
+      m_telescopeState->updateSlewMotion();
+    }
+
     slewProgress += 20;
     
     if (slewProgress >= 100) {

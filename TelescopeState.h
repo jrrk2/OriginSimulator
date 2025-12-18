@@ -5,6 +5,7 @@
 #include <QDateTime>
 #include <QStringList>
 #include <QRandomGenerator>
+#include <QDebug>
 
 class TelescopeState {
 public:
@@ -79,7 +80,7 @@ public:
     QString mode = "Auto";
     
     // Orientation data (real values with variation)
-    int altitude = 59; // Real data shows 59-60
+    // Note: altitude is now stored as double in radians for slew motion (see slew motion control section)
     
     // Task Controller data
     bool isReady = false;
@@ -95,11 +96,18 @@ public:
     int imageCounter = 0;
     
     // Commands being executed
-    bool isSlewing = false;
+    bool isSlewing = false;        // True for GotoRaDec slewing
+    bool isManualSlewing = false;  // True for manual Alt/Az Slew command
     bool isImaging = false;
     double targetRa = 0.0;
     double targetDec = 0.0;
     int imagingTimeLeft = 0;
+    
+    // Slew motion control (for manual Slew command)
+    int slewAltRate = 0;   // Altitude slew rate (-9 to +9)
+    int slewAzmRate = 0;   // Azimuth slew rate (-9 to +9)
+    double azimuth = M_PI;  // Current azimuth in radians (start at 180°)
+    double altitude = M_PI / 4.0; // Current altitude in radians (start at 45°)
     
     // Available directories for download (more realistic names)
     QStringList astrophotographyDirs = {
@@ -192,8 +200,9 @@ public:
         if (cpuTemperature < 42.0) cpuTemperature = 42.0;
         if (cpuTemperature > 45.0) cpuTemperature = 45.0;
         
-        // Altitude varies between 59-60 like real data
-        altitude = 59 + (QRandomGenerator::global()->bounded(2));
+        // Note: altitude is now stored as double in radians for slew motion
+        // The real telescope's "altitude" field in orientation status was 59-60 degrees
+        // We keep our altitude in radians for motion calculations
     }
     
     // Get next image filename (cycles through 0-9 like real telescope)
@@ -212,6 +221,58 @@ public:
                 freeBytes = capacity - 10000000; // Reset to reasonable level
             }
         }
+    }
+    
+    // Update slew motion (called every 100ms from timer)
+    void updateSlewMotion() {
+        if (!isManualSlewing || (slewAltRate == 0 && slewAzmRate == 0)) return;
+        
+        // Store old values for debug output
+        double oldAltitude = altitude;
+        double oldAzimuth = azimuth;
+        
+        // Update altitude based on slew rate
+        // Rate of 9 = approximately 0.45° per 100ms = 4.5°/sec
+        double altDelta = slewAltRate * 0.05 * (M_PI / 180.0);
+        double azmDelta = slewAzmRate * 0.05 * (M_PI / 180.0);
+        
+        altitude += altDelta;
+        azimuth += azmDelta;
+        
+        // Wrap azimuth to 0-2π
+        while (azimuth < 0) azimuth += 2.0 * M_PI;
+        while (azimuth >= 2.0 * M_PI) azimuth -= 2.0 * M_PI;
+        
+        // Clamp altitude to valid range (-90° to +90°)
+        const double MAX_ALT = M_PI / 2.0;  // 90°
+        const double MIN_ALT = -M_PI / 2.0; // -90°
+        if (altitude > MAX_ALT) altitude = MAX_ALT;
+        if (altitude < MIN_ALT) altitude = MIN_ALT;
+        
+        // Debug output showing motion
+        double altDeg = altitude * 180.0 / M_PI;
+        double azmDeg = azimuth * 180.0 / M_PI;
+        double oldAltDeg = oldAltitude * 180.0 / M_PI;
+        double oldAzmDeg = oldAzimuth * 180.0 / M_PI;
+        
+        if (slewAltRate != 0) {
+            qDebug() << QString("🔭 ALT: %1° → %2° (Δ%3°, rate: %4)")
+                        .arg(oldAltDeg, 6, 'f', 2)
+                        .arg(altDeg, 6, 'f', 2)
+                        .arg(altDeg - oldAltDeg, 5, 'f', 2)
+                        .arg(slewAltRate);
+        }
+        
+        if (slewAzmRate != 0) {
+            qDebug() << QString("🔭 AZM: %1° → %2° (Δ%3°, rate: %4)")
+                        .arg(oldAzmDeg, 6, 'f', 2)
+                        .arg(azmDeg, 6, 'f', 2)
+                        .arg(azmDeg - oldAzmDeg, 5, 'f', 2)
+                        .arg(slewAzmRate);
+        }
+        
+        // Convert Alt/Az back to RA/Dec (simplified, telescope does this automatically)
+        updateCelestialCoordinates();
     }
     
     // Factory calibration status (more realistic)

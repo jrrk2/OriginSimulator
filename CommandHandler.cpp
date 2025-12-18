@@ -28,6 +28,8 @@ void CommandHandler::processCommand(const QJsonObject &obj, WebSocketConnection 
         handleFinishAlignment(obj, wsConn, sequenceId, source, destination);
     } else if (command == "GotoRaDec") {
         handleGotoRaDec(obj, wsConn, sequenceId, source, destination);
+    } else if (command == "Slew") {
+        handleSlew(obj, wsConn, sequenceId, source, destination);
     } else if (command == "AbortAxisMovement") {
         handleAbortAxisMovement(obj, wsConn, sequenceId, source, destination);
     } else if (command == "StartTracking") {
@@ -243,6 +245,46 @@ void CommandHandler::handleGotoRaDec(const QJsonObject &obj, WebSocketConnection
         
         sendJsonResponse(wsConn, response);
     }
+}
+
+void CommandHandler::handleSlew(const QJsonObject &obj, WebSocketConnection *wsConn, int sequenceId, const QString &source, const QString &destination) {
+    // Extract slew rates from command
+    int altRate = obj["AltRate"].toInt();
+    int azmRate = obj["AzmRate"].toInt();
+    
+    // If both rates are zero, we're stopping
+    if (altRate == 0 && azmRate == 0) {
+        m_telescopeState->isManualSlewing = false;
+        qDebug() << "🛑 Slew STOPPED";
+        qDebug() << QString("   Final Position: Alt=%1°, Azm=%2°")
+                    .arg(m_telescopeState->altitude * 180.0 / M_PI, 0, 'f', 2)
+                    .arg(m_telescopeState->azimuth * 180.0 / M_PI, 0, 'f', 2);
+    } else {
+        m_telescopeState->isManualSlewing = true;
+        qDebug() << "🚀 Slew STARTED";
+        qDebug() << QString("   Alt Rate: %1 (%2°/sec)").arg(altRate).arg(altRate * 0.5);
+        qDebug() << QString("   Azm Rate: %1 (%2°/sec)").arg(azmRate).arg(azmRate * 0.5);
+        qDebug() << QString("   Starting Position: Alt=%1°, Azm=%2°")
+                    .arg(m_telescopeState->altitude * 180.0 / M_PI, 0, 'f', 2)
+                    .arg(m_telescopeState->azimuth * 180.0 / M_PI, 0, 'f', 2);
+    }
+    
+    // Update telescope state based on rates
+    m_telescopeState->slewAltRate = altRate;
+    m_telescopeState->slewAzmRate = azmRate;
+    
+    // Send response
+    QJsonObject response;
+    response["Command"] = "Slew";
+    response["Destination"] = source;
+    response["ErrorCode"] = 0;
+    response["ErrorMessage"] = "";
+    response["ExpiredAt"] = QDateTime::currentDateTime().toSecsSinceEpoch();
+    response["SequenceID"] = sequenceId;
+    response["Source"] = destination;
+    response["Type"] = "Response";
+    
+    sendJsonResponse(wsConn, response);
 }
 
 void CommandHandler::handleAbortAxisMovement(const QJsonObject &obj, WebSocketConnection *wsConn, int sequenceId, const QString &source, const QString &destination) {
