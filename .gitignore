@@ -3,6 +3,11 @@
 *.csv
 .DS_Store
 .qmake.stash
+moc_*.cpp
+moc_predefs.h
 .xcode/
 Debug/
 Release/
+build/
+release/
+OriginSimulator.app/
