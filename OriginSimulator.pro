@@ -27,12 +27,6 @@ SOURCES += \
     healpix/src/cxx/cxxsupport/string_utils.cc \
     healpix/src/cxx/cxxsupport/error_handling.cc \
     healpix/src/cxx/cxxsupport/pointing.cc \
-    moc_CelestronOriginSimulator.cpp \
-    moc_CommandHandler.cpp \
-    moc_EnhancedMosaicCreator.cpp \
-    moc_ProperHipsClient.cpp \
-    moc_StatusSender.cpp \
-    moc_WebSocketConnection.cpp \
    
 # Headers
 HEADERS += \
@@ -42,7 +36,8 @@ HEADERS += \
     CommandHandler.h \
     TiffImageGenerator.h \
     StatusSender.h \
-    moc_predefs.h \
+    ProperHipsClient.h \
+    EnhancedMosaicCreator.h
 
 # For Xcode project generation
 macx {
