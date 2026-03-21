@@ -480,14 +480,14 @@ void CelestronOriginSimulator::handleNewConnection() {
 
 void CelestronOriginSimulator::sendBroadcast() {
     // Prepare the broadcast message
-    QString message = QString("Identity:Origin-") + QLatin1String(std::to_string(broadcast_id)) + QString("Z Origin IP Address = %1");
+    QString message = QString("Identity:Origin-%1Z Origin IP Address = %2");
     
     // Get our IP addresses
     QList<QHostAddress> ipAddresses = QNetworkInterface::allAddresses();
     
     for (const QHostAddress &address : ipAddresses) {
         if (address.protocol() == QAbstractSocket::IPv4Protocol && address != QHostAddress::LocalHost) {
-            QString broadcastMessage = message.arg(address.toString());
+            QString broadcastMessage = message.arg(broadcast_id).arg(address.toString());
             if (true) qDebug() << broadcastMessage;
             
             // Send broadcast on all network interfaces
