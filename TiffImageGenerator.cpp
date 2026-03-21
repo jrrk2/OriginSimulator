@@ -165,7 +165,6 @@ bool TiffImageGenerator::writeTiff16BitRGB(const QString& outputPath,
     TIFFSetField(tif, TIFFTAG_SOFTWARE, softwareTag.toUtf8().constData());
     
     // Write image data row by row
-    size_t rowSize = width * SAMPLES_PER_PIXEL * sizeof(uint16_t);
     
     for (int row = 0; row < height; row++) {
         const uint16_t* rowData = imageData + (row * width * SAMPLES_PER_PIXEL);
