@@ -7,7 +7,11 @@ A comprehensive C++ Qt-based simulator for the Celestron Origin telescope system
 - **Complete Protocol Implementation**: Supports both WebSocket control commands and HTTP image serving
 - **Real-time Status Updates**: Broadcasts telescope status, focuser, camera, and environmental data
 - **Command Processing**: Handles telescope control commands including alignment, GOTO, tracking, and imaging
-- **Image Simulation**: Serves simulated telescope images via HTTP
+- **Physically calibrated image generation**: Gaia-catalog stars rendered with TAN projection, per-magnitude ADU response matched to a real Origin sensor (14 cm aperture, 1.477″/px, ~5000-ADU sky pedestal, ~50-ADU σ read noise, FWHM ≈ 6 px); separate sub-image caches for LIVE preview vs STACKED_MASTER so the App's star detector sees clean star fields during alignment
+- **Mount-error simulation**: ±0.5″ periodic error at the worm period (~260 s), σ ≈ 0.1″ per-frame walking-noise drift, alt-az field rotation around the parallactic angle, and per-exposure arc trails (cap at 100 sub-samples) — all derived from measurements of a real 393-frame imaging session
+- **Sky model**: configurable Bortle class (1–9) with corresponding sky-photon contribution and shot noise, optional Rayleigh airmass brightening, simple Meeus-formula Moon position with phase-weighted Gaussian halo
+- **Stellarium DSO overlay**: when launched with `--dso=<name>` the simulator parks at the requested Stellarium tile's centre and paints the corresponding PNG (with gamma-suppressed background and progressive build-up scaled by stack depth) into STACKED_MASTER / SNAPSHOT frames only, so the App's alignment-time star detector isn't confused by nebula pixels
+- **Per-frame independent noise**: each frame's read-noise field is drawn from a fresh thread-local Mersenne-Twister RNG with independent samples per channel, so stacking N subs improves sky SNR as √N (just like a real camera)
 - **Network Discovery**: Broadcasts UDP discovery messages for automatic telescope detection
 - **WebSocket Ping/Pong**: Proper WebSocket heartbeat implementation with timeout handling
 
@@ -94,8 +98,14 @@ open OriginSimulator.xcodeproj
 
 1. **Start the Simulator**:
    ```bash
-   ./OriginSimulator
+   ./OriginSimulator [--dso=<filename-fragment>] [--dso-attenuation=<float>] [--bortle=<1..9>] [--rayleigh]
    ```
+
+   Flags:
+   - `--dso=<frag>` — restrict the Stellarium DSO overlay to one tile (filename substring match) and park the mount at that object's centre on startup. Sidesteps the Origin App's search-UI crash and the multi-DSO "Can't see stars" detector failure. Example: `--dso=m51-vasey`.
+   - `--dso-attenuation=<float>` — multiply DSO overlay brightness (default 1.0). Use `<1` to dim, `>1` to brighten without rebuilding.
+   - `--bortle=<1..9>` — sky-photon contribution to the pedestal (default 5 = suburban). Bortle 5 adds only a few ADU/px at 10 s exposure; meaningful change is at ≥7.
+   - `--rayleigh` — enable airmass-driven sky brightening (off by default — it can drown the App's star detector at moderate altitudes).
 
 2. **Connect via WebSocket**:
    ```javascript
