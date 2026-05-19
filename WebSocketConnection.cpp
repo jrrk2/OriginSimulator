@@ -5,11 +5,28 @@
 #include <QCryptographicHash>
 #include <QDebug>
 #include <QTime>
+#include <QJsonDocument>
+#include <QJsonObject>
 
 void WebSocketConnection::sendTextMessage(const QString &message) {
     if (!m_handshakeComplete || !m_socket) return;
-    
+
     QByteArray data = message.toUtf8();
+
+    // Log outgoing messages via qDebug — bypasses stderr so the GUI's
+    // qInstallMessageHandler can route to the in-window log pane and apply
+    // category filters (the SEND [Notification] bucket especially).
+    QJsonDocument doc = QJsonDocument::fromJson(data);
+    if (doc.isObject()) {
+        QJsonObject obj = doc.object();
+        QString src = obj["Source"].toString();
+        QString cmd = obj["Command"].toString();
+        QString type = obj["Type"].toString();
+        qDebug("SEND [%s] %s/%s %s",
+               qPrintable(type), qPrintable(src), qPrintable(cmd),
+               qPrintable(QString::fromUtf8(doc.toJson(QJsonDocument::Compact))));
+    }
+
     sendFrame(0x01, data); // Text frame
 }
 

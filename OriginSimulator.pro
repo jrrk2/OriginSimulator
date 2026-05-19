@@ -35,6 +35,7 @@ SOURCES += \
     healpixmirror/src/cxx/cxxsupport/pointing.cc \
     GaiaStarFieldRenderer.cpp \
     StellariumDSOOverlay.cpp \
+    SimulatorMainWindow.cpp \
 
 # Headers
 HEADERS += \
@@ -48,6 +49,7 @@ HEADERS += \
     ProperHipsClient.h \
     GaiaStarFieldRenderer.h \
     StellariumDSOOverlay.h \
+    SimulatorMainWindow.h \
 
 # For Xcode project generation
 macx {

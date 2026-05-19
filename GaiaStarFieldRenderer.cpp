@@ -5,6 +5,10 @@
 
 #include <QDir>
 #include <QDebug>
+#include <QDateTime>
+#include <QJsonDocument>
+#include <QJsonObject>
+#include <QUuid>
 
 #include <cmath>
 #include <algorithm>
@@ -77,17 +81,140 @@ QByteArray GaiaStarFieldRenderer::write16BitRGBTiff(
     int w, int h,
     const std::vector<uint16_t> &rCh,
     const std::vector<uint16_t> &gCh,
-    const std::vector<uint16_t> &bCh)
+    const std::vector<uint16_t> &bCh,
+    const TiffMetadata* meta)
 {
-    quint32 stripBytes = w * h * 3 * 2;
-    quint32 pixelDataOffset = 8;
-    quint32 ifdOffset = 8 + stripBytes;
-    int numEntries = 11;
-    quint32 ifdSize = 2 + numEntries * 12 + 4;
-    quint32 bpsArrayOffset = ifdOffset + ifdSize;
+    // ============================================================
+    // Build the optional auxiliary data first (we need their sizes
+    // before we can fix the IFD entry offsets).
+    // ============================================================
+    const QByteArray softwareTag = QByteArray("Origin 1.2.5227 08-15-2025 17:51") + '\0';
+
+    // Decompose a radians-as-decimal-degrees angle into (deg, min, sec) for
+    // the GPS lat/long rationals.
+    auto degMinSec = [](double rad, int &deg, int &min, double &sec) {
+        double absDeg = std::fabs(rad) * 180.0 / M_PI;
+        deg = int(std::floor(absDeg));
+        double rem = (absDeg - deg) * 60.0;
+        min = int(std::floor(rem));
+        sec = (rem - min) * 60.0;
+    };
+
+    // Compose the JSON MakerNote payload from the metadata.
+    QByteArray makerNote;
+    QByteArray dateTimeOriginal;   // "YYYY:MM:DD HH:MM:SS" — 20 bytes inc null
+    QByteArray offsetTimeOriginal; // "+HH:MM" — 7 bytes inc null
+    QByteArray uuidStr;
+    QByteArray objectStr;
+    QByteArray filterStr;
+    QByteArray bayerStr;
+    if (meta) {
+        QDateTime now = QDateTime::currentDateTime();
+        // Format the timezone offset as numeric "+HHMM" — Qt's "t" token
+        // returns the TZ abbreviation ("BST"/"GMT"/...) rather than a numeric
+        // offset, which the App may not accept. Match the real telescope:
+        // "2025-05-19T22:22:12+0100".
+        auto numericOffset = [](const QDateTime& dt) -> QString {
+            int s = dt.offsetFromUtc();
+            const char sign = (s >= 0 ? '+' : '-');
+            s = std::abs(s);
+            return QString("%1%2%3").arg(sign)
+                                    .arg(s / 3600, 2, 10, QChar('0'))
+                                    .arg((s % 3600) / 60, 2, 10, QChar('0'));
+        };
+        QString iso = meta->isoDateTime;
+        if (iso.isEmpty())
+            iso = now.toString("yyyy-MM-ddTHH:mm:ss") + numericOffset(now);
+        QString uuidQ = meta->uuid;
+        if (uuidQ.isEmpty())
+            uuidQ = QUuid::createUuid().toString(QUuid::WithoutBraces).toUpper();
+        uuidStr   = uuidQ.toUtf8();
+        objectStr = meta->objectName.toUtf8();
+        filterStr = meta->filter.toUtf8();
+        bayerStr  = meta->bayer.toUtf8();
+
+        const double totalDurationMs = double(meta->stackDepth) * meta->exposureSec * 1000.0;
+
+        QJsonObject stackedInfo;
+        stackedInfo["bayer"] = meta->bayer;
+        QJsonObject captureParams;
+        captureParams["autoExposure"] = true;
+        captureParams["binning"]      = 1;
+        captureParams["exposure"]     = meta->exposureSec;
+        captureParams["iso"]          = meta->iso;
+        captureParams["temperature"]  = meta->cameraTempC;
+        stackedInfo["captureParams"] = captureParams;
+        QJsonObject celestial;
+        celestial["first"]  = meta->raRad;
+        celestial["second"] = meta->decRad;
+        stackedInfo["celestial"]   = celestial;
+        stackedInfo["dateTime"]    = iso;
+        stackedInfo["filter"]      = meta->filter;
+        stackedInfo["fovX"]        = meta->fovXRad;
+        stackedInfo["fovY"]        = meta->fovYRad;
+        QJsonObject gps;
+        gps["altitude"]  = meta->altitudeM;
+        gps["latitude"]  = meta->latRad * 180.0 / M_PI;
+        gps["longitude"] = meta->lonRad * 180.0 / M_PI;
+        stackedInfo["gps"] = gps;
+        stackedInfo["imageHeight"]       = meta->imageHeight;
+        stackedInfo["imageWidth"]        = meta->imageWidth;
+        stackedInfo["objectName"]        = meta->objectName;
+        stackedInfo["orientation"]       = meta->orientationRad;
+        stackedInfo["stackedDepth"]      = meta->stackDepth;
+        stackedInfo["stretchBackground"] = meta->stretchBackground;
+        stackedInfo["stretchStrength"]   = meta->stretchStrength;
+        stackedInfo["totalDurationMs"]   = totalDurationMs;
+        stackedInfo["uuid"]              = uuidQ;
+        QJsonObject root;
+        root["StackedInfo"] = stackedInfo;
+        makerNote = QJsonDocument(root).toJson(QJsonDocument::Compact);
+        // Real telescope's MakerNote isn't null-terminated; keep raw bytes.
+
+        // Exif DateTimeOriginal + OffsetTimeOriginal use the same now timestamp.
+        const QString dtStr  = now.toString("yyyy:MM:dd HH:mm:ss");
+        const QString offNum = numericOffset(now);  // "+0100"
+        dateTimeOriginal = (dtStr + '\0').toLatin1();
+        // Convert "+0100" → "+01:00" for OffsetTimeOriginal (Exif spec).
+        const QString offWithColon = offNum.left(3) + ':' + offNum.right(2);
+        offsetTimeOriginal = (offWithColon + '\0').toLatin1();
+    }
+    const bool hasMeta = (meta != nullptr);
+
+    // ============================================================
+    // Layout computation (offsets are file-relative).
+    // ============================================================
+    const quint32 stripBytes      = quint32(w) * quint32(h) * 3u * 2u;
+    const quint32 pixelDataOffset = 8;
+    const quint32 ifdOffset       = pixelDataOffset + stripBytes;
+    const int     numMainEntries  = hasMeta ? 15 : 12;
+    const quint32 mainIfdSize     = 2u + quint32(numMainEntries) * 12u + 4u;
+
+    // Place trailing data after the main IFD:
+    quint32 cursor = ifdOffset + mainIfdSize;
+    const quint32 bpsArrayOffset  = cursor; cursor += 6;
+    const quint32 softwareOffset  = cursor; cursor += quint32(softwareTag.size());
+
+    quint32 gpsDataOffset = 0, gpsIfdOffset = 0;
+    quint32 dateTimeOffset = 0, offsetTimeOffset = 0, exposureRatOffset = 0;
+    quint32 makerNoteOffset = 0, exifIfdOffset = 0;
+    if (hasMeta) {
+        // GPS rational data: lat (3×8 bytes), lon (3×8 bytes), alt (8 bytes) = 56 bytes
+        gpsDataOffset = cursor; cursor += 8u * 3 + 8u * 3 + 8u;
+        // GPS IFD: numEntries(2) + 7×12 + nextIFD(4) = 90 bytes
+        gpsIfdOffset  = cursor; cursor += 90;
+        // Exif ASCII / rational / undefined data, in order
+        dateTimeOffset     = cursor; cursor += quint32(dateTimeOriginal.size());
+        offsetTimeOffset   = cursor; cursor += quint32(offsetTimeOriginal.size());
+        exposureRatOffset  = cursor; cursor += 8;  // ExposureTime rational
+        makerNoteOffset    = cursor; cursor += quint32(makerNote.size());
+        // Exif IFD: numEntries(2) + 7×12 + nextIFD(4) = 90 bytes
+        exifIfdOffset      = cursor; cursor += 90;
+    }
+    const quint32 totalSize = cursor;
 
     QByteArray tiff;
-    tiff.reserve(8 + stripBytes + ifdSize + 6);
+    tiff.reserve(totalSize);
 
     auto put16 = [&](quint16 v) {
         tiff.append((char)(v & 0xFF));
@@ -100,11 +227,12 @@ QByteArray GaiaStarFieldRenderer::write16BitRGBTiff(
         tiff.append((char)((v >> 24) & 0xFF));
     };
 
+    // ---- Header (8 bytes) ----
     tiff.append("II", 2);
     put16(42);
     put32(ifdOffset);
 
-    // Write interleaved RGB pixel data in bulk for performance
+    // ---- Pixel data ----
     {
         int npix = w * h;
         QByteArray pixelData(npix * 3 * 2, Qt::Uninitialized);
@@ -117,7 +245,8 @@ QByteArray GaiaStarFieldRenderer::write16BitRGBTiff(
         tiff.append(pixelData);
     }
 
-    put16(numEntries);
+    // ---- Main IFD ----
+    put16(quint16(numMainEntries));
 
     auto ifdShort = [&](quint16 tag, quint16 val) {
         put16(tag); put16(3); put32(1); put16(val); put16(0);
@@ -127,6 +256,12 @@ QByteArray GaiaStarFieldRenderer::write16BitRGBTiff(
     };
     auto ifdShortPtr = [&](quint16 tag, quint32 count, quint32 offset) {
         put16(tag); put16(3); put32(count); put32(offset);
+    };
+    auto ifdAsciiPtr = [&](quint16 tag, quint32 count, quint32 offset) {
+        put16(tag); put16(2); put32(count); put32(offset);
+    };
+    auto ifdIfdPtr = [&](quint16 tag, quint32 offset) {
+        put16(tag); put16(13); put32(1); put32(offset);
     };
 
     ifdShort(256, w);
@@ -140,9 +275,91 @@ QByteArray GaiaStarFieldRenderer::write16BitRGBTiff(
     ifdLong(278, h);
     ifdLong(279, stripBytes);
     ifdShort(284, 1);
+    ifdAsciiPtr(305, quint32(softwareTag.size()), softwareOffset);
+    if (hasMeta) {
+        ifdIfdPtr(34665, exifIfdOffset);   // Exif IFD pointer
+        ifdIfdPtr(34853, gpsIfdOffset);    // GPS IFD pointer
+        ifdShort(50741, 1);                // MakerNoteSafety = 1
+    }
+    put32(0);                              // next IFD = none
 
-    put32(0);
+    // ---- BPS array ----
     put16(16); put16(16); put16(16);
+
+    // ---- Software string ----
+    tiff.append(softwareTag);
+
+    if (hasMeta) {
+        // ---- GPS rational data ----
+        auto putRat = [&](quint32 num, quint32 den) { put32(num); put32(den); };
+        // Latitude DMS
+        int lat_d, lat_m; double lat_s;
+        degMinSec(meta->latRad, lat_d, lat_m, lat_s);
+        putRat(quint32(lat_d), 1);
+        putRat(quint32(lat_m), 1);
+        // Seconds expressed with high precision: encode as integer micro-arcseconds
+        putRat(quint32(lat_s * 1e6), 1000000);
+        // Longitude DMS
+        int lon_d, lon_m; double lon_s;
+        degMinSec(meta->lonRad, lon_d, lon_m, lon_s);
+        putRat(quint32(lon_d), 1);
+        putRat(quint32(lon_m), 1);
+        putRat(quint32(lon_s * 1e6), 1000000);
+        // Altitude rational
+        putRat(quint32(std::max(0.0, meta->altitudeM)), 1);
+
+        // ---- GPS IFD ----
+        put16(7);                                              // numEntries
+        // 0: GPSVersionID (BYTE × 4) = 2.3.0.0
+        put16(0); put16(1); put32(4);
+        tiff.append((char)2); tiff.append((char)3);
+        tiff.append((char)0); tiff.append((char)0);
+        // 1: GPSLatitudeRef (ASCII 2) "N\0" or "S\0"
+        put16(1); put16(2); put32(2);
+        tiff.append(meta->latRad >= 0 ? 'N' : 'S');
+        tiff.append('\0'); tiff.append('\0'); tiff.append('\0');
+        // 2: GPSLatitude (RATIONAL × 3) offset
+        put16(2); put16(5); put32(3); put32(gpsDataOffset);
+        // 3: GPSLongitudeRef
+        put16(3); put16(2); put32(2);
+        tiff.append(meta->lonRad >= 0 ? 'E' : 'W');
+        tiff.append('\0'); tiff.append('\0'); tiff.append('\0');
+        // 4: GPSLongitude (RATIONAL × 3) offset
+        put16(4); put16(5); put32(3); put32(gpsDataOffset + 24);
+        // 5: GPSAltitudeRef (BYTE = 0)
+        put16(5); put16(1); put32(1); put32(0);
+        // 6: GPSAltitude (RATIONAL × 1) offset
+        put16(6); put16(5); put32(1); put32(gpsDataOffset + 48);
+        put32(0);                                              // next IFD = none
+
+        // ---- Exif ASCII / rational / undefined data ----
+        tiff.append(dateTimeOriginal);
+        tiff.append(offsetTimeOriginal);
+        // ExposureTime rational: num=exposure_x1000, den=1000 → preserves decimal seconds
+        const quint32 expNum = quint32(meta->exposureSec * 1000.0);
+        put32(expNum); put32(1000);
+        // MakerNote raw bytes (no null terminator)
+        tiff.append(makerNote);
+
+        // ---- Exif IFD ----
+        put16(7);                                              // numEntries
+        // 33434 ExposureTime (RATIONAL × 1)
+        put16(33434); put16(5); put32(1); put32(exposureRatOffset);
+        // 34867 ISOSpeed (LONG × 1) — inline
+        put16(34867); put16(4); put32(1); put32(quint32(meta->iso));
+        // 36864 ExifVersion (UNDEFINED × 4) = "0231"
+        put16(36864); put16(7); put32(4);
+        tiff.append('0'); tiff.append('2'); tiff.append('3'); tiff.append('1');
+        // 36867 DateTimeOriginal (ASCII × len) — pointer
+        put16(36867); put16(2); put32(quint32(dateTimeOriginal.size())); put32(dateTimeOffset);
+        // 36881 OffsetTimeOriginal (ASCII × len) — pointer
+        put16(36881); put16(2); put32(quint32(offsetTimeOriginal.size())); put32(offsetTimeOffset);
+        // 37500 MakerNote (UNDEFINED × len) — pointer
+        put16(37500); put16(7); put32(quint32(makerNote.size())); put32(makerNoteOffset);
+        // 41986 ExposureMode (SHORT × 1) = 0 (Auto)
+        put16(41986); put16(3); put32(1); put16(0); put16(0);
+        put32(0);                                              // next IFD = none
+    }
 
     return tiff;
 }
@@ -158,7 +375,8 @@ QByteArray GaiaStarFieldRenderer::renderField(double ra_deg, double dec_deg,
                                                double cameraRotationDeg,
                                                double exposureRotationDeg,
                                                const StellariumDSOOverlay* dsoOverlay,
-                                               int    stackDepth)
+                                               int    stackDepth,
+                                               const TiffMetadata* tiffMeta)
 {
     if (!m_available) {
         qWarning() << "GaiaStarFieldRenderer: no database available";
@@ -462,7 +680,7 @@ QByteArray GaiaStarFieldRenderer::renderField(double ra_deg, double dec_deg,
         outB[i] = (uint16_t)std::min(65535.0f, std::max(0.0f, imgB[i]));
     }
 
-    QByteArray tiff = write16BitRGBTiff(width, height, outR, outG, outB);
+    QByteArray tiff = write16BitRGBTiff(width, height, outR, outG, outB, tiffMeta);
     qDebug() << "Gaia star field rendered:" << tiff.size() << "bytes,"
              << starIdx.size() << "of" << allStars.size() << "stars";
     return tiff;

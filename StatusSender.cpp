@@ -40,6 +40,11 @@ void StatusSender::sendMountStatus(WebSocketConnection *specificClient, int sequ
     QJsonObject mountStatus;
     mountStatus["Command"] = "GetStatus";
     mountStatus["Destination"] = destination.isEmpty() ? "All" : destination;
+    mountStatus["Alt"] = m_telescopeState->altitude;
+    mountStatus["AltitudeError"] = 0.0;
+    mountStatus["Azm"] = m_telescopeState->azimuth;
+    mountStatus["AzimuthError"] = 0.0;
+    mountStatus["BatteryCurrent"] = m_telescopeState->batteryCurrent;
     mountStatus["BatteryLevel"] = m_telescopeState->batteryLevel;
     mountStatus["BatteryVoltage"] = m_telescopeState->batteryVoltage;
     mountStatus["ChargerStatus"] = m_telescopeState->chargerStatus;
@@ -52,6 +57,8 @@ void StatusSender::sendMountStatus(WebSocketConnection *specificClient, int sequ
     mountStatus["IsGotoOver"] = m_telescopeState->isGotoOver;
     mountStatus["IsTracking"] = m_telescopeState->isTracking;
     mountStatus["NumAlignRefs"] = m_telescopeState->numAlignRefs;
+    mountStatus["Ra"] = m_telescopeState->ra;
+    mountStatus["Dec"] = m_telescopeState->dec;
     mountStatus["Enc0"] = m_telescopeState->enc0;
     mountStatus["Enc1"] = m_telescopeState->enc1;
     mountStatus["ExpiredAt"] = m_telescopeState->getExpiredAt();
@@ -129,26 +136,30 @@ void StatusSender::sendCameraParams(WebSocketConnection *specificClient, int seq
     cameraParams["ColorGBalance"] = m_telescopeState->colorGBalance;
     cameraParams["ColorRBalance"] = m_telescopeState->colorRBalance;
     cameraParams["Exposure"] = m_telescopeState->exposure;
+    cameraParams["ExposedTime"] = m_telescopeState->exposedTime;
     cameraParams["ISO"] = m_telescopeState->iso;
     cameraParams["Offset"] = m_telescopeState->offset;
+    cameraParams["Temperature"] = m_telescopeState->cameraTemperature;
     cameraParams["ExpiredAt"] = m_telescopeState->getExpiredAt();
-    
+    // Command must be set on both Response and Notification — the App
+    // filters notifications by Command and silently drops frames that
+    // omit it, which suppresses the per-exposure progress bar.
+    cameraParams["Command"] = "GetCaptureParameters";
+    cameraParams["Source"]  = "Camera";
+
     if (sequenceId != -1) {
-        cameraParams["Command"] = "GetCaptureParameters";
         cameraParams["SequenceID"] = sequenceId;
-        cameraParams["Source"] = "Camera";
         cameraParams["Type"] = "Response";
         cameraParams["ErrorCode"] = 0;
         cameraParams["ErrorMessage"] = "";
-        
+
         if (specificClient) {
             sendJsonMessage(specificClient, cameraParams);
         }
     } else {
         cameraParams["SequenceID"] = m_telescopeState->getNextSequenceId();
-        cameraParams["Source"] = "Camera";
         cameraParams["Type"] = "Notification";
-        
+
         if (specificClient) {
             sendJsonMessage(specificClient, cameraParams);
         } else {
@@ -158,25 +169,58 @@ void StatusSender::sendCameraParams(WebSocketConnection *specificClient, int seq
 }
 
 void StatusSender::sendNewImageReady(WebSocketConnection *specificClient) {
-    // Update coordinates and get next image
+    // Update coordinates; only cycle to next LIVE .jpg path if there's no
+    // pending one-shot frame (SNAPSHOT TIFF or STACKED_MASTER from
+    // RunImaging). Otherwise we'd clobber the path the simulator set.
     m_telescopeState->updateCelestialCoordinates();
-    m_telescopeState->fileLocation = m_telescopeState->getNextImageFile();
-    
+    if (m_telescopeState->imageType == "LIVE")
+        m_telescopeState->fileLocation = m_telescopeState->getNextImageFile();
+
     QJsonObject newImage;
-    newImage["Command"] = "NewImageReady";
-    newImage["Destination"] = "All";
-    newImage["Ra"] = m_telescopeState->ra;
-    newImage["Dec"] = m_telescopeState->dec;
-    newImage["FovX"] = m_telescopeState->fovX;
-    newImage["FovY"] = m_telescopeState->fovY;
-    newImage["Orientation"] = m_telescopeState->orientation;
-    newImage["Source"] = "ImageServer";
-    newImage["ImageType"] = m_telescopeState->imageType;
+    newImage["Command"]      = "NewImageReady";
+    newImage["Destination"]  = "All";
+    newImage["Ra"]           = m_telescopeState->ra;
+    newImage["Dec"]          = m_telescopeState->dec;
+    newImage["FovX"]         = m_telescopeState->fovX;
+    newImage["FovY"]         = m_telescopeState->fovY;
+    newImage["Orientation"]  = m_telescopeState->orientation;
+    newImage["Source"]       = "ImageServer";
+    newImage["ImageType"]    = m_telescopeState->imageType;
     newImage["FileLocation"] = m_telescopeState->fileLocation;
-    newImage["ExpiredAt"] = m_telescopeState->getExpiredAt();
-    newImage["SequenceID"] = m_telescopeState->getNextSequenceId();
-    newImage["Type"] = "Notification";
-    
+    newImage["ExpiredAt"]    = m_telescopeState->getExpiredAt();
+    newImage["SequenceID"]   = m_telescopeState->getNextSequenceId();
+    newImage["Type"]         = "Notification";
+    newImage["ImageWidth"]   = 3056;
+    newImage["ImageHeight"]  = 2048;
+    newImage["ISO"]          = m_telescopeState->iso;
+    newImage["ExposureTime"] = m_telescopeState->exposure;
+    newImage["ImageLocation"] = "/home/core/SmartScopeCore/" + m_telescopeState->fileLocation;
+    newImage["StretchBackground"] = 0.035;
+    // Real-telescope StretchStrength differs by image type (confirmed in
+    // dither.pcapng + origin1.pcapng): LIVE = 0.85, STACKED_MASTER = 0.9,
+    // SAMPLE_CAPTURE = 0.8. The App may use this to set the display histogram
+    // appropriately per kind of frame.
+    if (m_telescopeState->imageType == "STACKED_MASTER")
+        newImage["StretchStrength"] = 0.9;
+    else if (m_telescopeState->imageType == "SAMPLE_CAPTURE")
+        newImage["StretchStrength"] = 0.8;
+    else
+        newImage["StretchStrength"] = 0.85;
+
+    // Extra fields the App expects on STACKED_MASTER frames during a
+    // RunImaging session — matches the real Origin's dither.pcapng output.
+    if (m_telescopeState->imageType == "STACKED_MASTER") {
+        newImage["StackDepth"]   = m_telescopeState->stackDepth;
+        newImage["ObjectName"]   = m_telescopeState->imagingObjectName;
+        newImage["Uuid"]         = m_telescopeState->imagingUuid;
+        newImage["Latitude"]     = m_telescopeState->latitude;
+        newImage["Longitude"]    = m_telescopeState->longitude;
+        newImage["Time"]         = QDateTime::currentDateTime().toString("HH:mm:ss");
+        newImage["Telescope"]    = "";
+        newImage["Mount"]        = "";
+        newImage["Reducer"]      = "";
+    }
+
     if (specificClient) {
         sendJsonMessage(specificClient, newImage);
     } else {
@@ -298,10 +342,16 @@ void StatusSender::sendDewHeaterStatus(WebSocketConnection *specificClient, int 
 void StatusSender::sendOrientationStatus(WebSocketConnection *specificClient, int sequenceId, const QString &destination) {
     // Update altitude
     m_telescopeState->updateEnvironmentalSensors(); // This updates altitude too
-    
+
+    // Convert altitude from radians to degrees for the inclinometer reading,
+    // and add ±1° noise to simulate real inclinometer accuracy
+    double altDeg = m_telescopeState->altitude * 180.0 / M_PI;
+    double noise = (QRandomGenerator::global()->bounded(2000) - 1000) / 1000.0; // ±1°
+    double inclinometerAlt = altDeg + noise;
+
     QJsonObject orientationStatus;
     orientationStatus["Destination"] = destination.isEmpty() ? "All" : destination;
-    orientationStatus["Altitude"] = m_telescopeState->altitude;
+    orientationStatus["Altitude"] = inclinometerAlt;
     orientationStatus["ExpiredAt"] = m_telescopeState->getExpiredAt();
     
     if (sequenceId != -1) {
@@ -336,17 +386,58 @@ void StatusSender::sendTaskControllerStatus(WebSocketConnection *specificClient,
     taskStatus["Stage"] = m_telescopeState->stage;
     taskStatus["State"] = m_telescopeState->state;
     taskStatus["ExpiredAt"] = m_telescopeState->getExpiredAt();
-    
-    // Add initialization info if in INITIALIZING state
-    if (m_telescopeState->state == "INITIALIZING") {
+    taskStatus["IsFakeInitialized"] = m_telescopeState->isFakeInitialized;
+
+    // ImagingInfo drives the App's "target in progress" UI. Emit only while
+    // an imaging task is active. Two shapes match the real device:
+    //   • CENTERING_TARGET — minimal block (no ObjectInfoList yet)
+    //   • IMAGING_OBJECT   — full block with ObjectInfoList[0] populated
+    const QString &st = m_telescopeState->state;
+    if (st == "CENTERING_TARGET" || st == "IMAGING_OBJECT") {
+        QJsonObject imagingInfo;
+        imagingInfo["ListUuid"] = "";
+        imagingInfo["NumObjectsRemaining"] = 0;
+        imagingInfo["TotalObjects"] = 1;
+        if (st == "IMAGING_OBJECT") {
+            imagingInfo["ImageUuid"] = m_telescopeState->imagingUuid;
+            QJsonObject obj;
+            obj["ExposedTime"]      = m_telescopeState->exposedTime;
+            obj["MinimumStartTime"] = "";
+            obj["ObjectName"]       = m_telescopeState->imagingObjectName;
+            const double total = m_telescopeState->imagingTotalSeconds;
+            double elapsedSec = 0.0;
+            if (m_telescopeState->imagingStartEpochMs > 0)
+                elapsedSec = (QDateTime::currentDateTime().toMSecsSinceEpoch()
+                              - m_telescopeState->imagingStartEpochMs) / 1000.0;
+            obj["RemainingTime"]    = qMax(0.0, total - elapsedSec);
+            obj["StackDepth"]       = m_telescopeState->stackDepth;
+            obj["StackingStatus"]   = "RUNNING";
+            obj["TotalTime"]        = total;
+            obj["Uuid"]             = m_telescopeState->imagingUuid;
+            QJsonArray list;
+            list.append(obj);
+            imagingInfo["ObjectInfoList"] = list;
+        }
+        taskStatus["ImagingInfo"] = imagingInfo;
+    }
+
+    // Add initialization info if in INITIALIZING state or just completed
+    if (m_telescopeState->state == "INITIALIZING" || m_telescopeState->stage == "COMPLETE") {
         QJsonObject initInfo;
+        initInfo["CurrentStep"] = m_telescopeState->initInfo.currentStep;
         initInfo["NumPoints"] = m_telescopeState->initInfo.numPoints;
-        initInfo["PositionOfFocus"] = m_telescopeState->initInfo.positionOfFocus;
-        initInfo["NumPointsRemaining"] = m_telescopeState->initInfo.numPointsRemaining;
-        initInfo["PercentComplete"] = m_telescopeState->initInfo.percentComplete;
-        
+        initInfo["PercentageComplete"] = m_telescopeState->initInfo.percentageComplete;
+
         taskStatus["InitializationInfo"] = initInfo;
-        
+
+        // Add focus info when focusing or after focus is found
+        if (m_telescopeState->focusInfo.position > 0) {
+            QJsonObject focusInfo;
+            focusInfo["Position"] = m_telescopeState->focusInfo.position;
+            focusInfo["PercentageComplete"] = m_telescopeState->focusInfo.percentageComplete;
+            taskStatus["FocusInfo"] = focusInfo;
+        }
+
         // Only add this flag if we're in a completion or post-init state
         if (m_telescopeState->stage == "COMPLETE" || m_telescopeState->state == "IDLE") {
             taskStatus["IsFakeInitialized"] = m_telescopeState->isFakeInitialized;
@@ -472,4 +563,136 @@ void StatusSender::sendCalibrationStatus(WebSocketConnection *wsConn, int sequen
     calNotification["CompletedPhases"] = completedPhases;
     
     sendJsonMessage(wsConn, calNotification);
+}
+
+void StatusSender::sendAutoguiderStatus(WebSocketConnection *wsConn, int sequenceId, const QString &destination) {
+    QJsonObject status;
+    status["Command"] = "GetStatus";
+    status["Destination"] = destination;
+    status["ErrorCode"] = 0;
+    status["ErrorMessage"] = "";
+    status["ExpiredAt"] = m_telescopeState->getExpiredAt();
+    status["SequenceID"] = sequenceId;
+    status["Source"] = "Autoguider";
+    status["Type"] = "Response";
+    status["Active"] = m_telescopeState->autoguiderActive;
+    status["RmsRA"] = m_telescopeState->autoguiderRmsRA;
+    status["RmsDec"] = m_telescopeState->autoguiderRmsDec;
+
+    sendJsonMessage(wsConn, status);
+}
+
+void StatusSender::sendLedRingStatus(WebSocketConnection *wsConn, int sequenceId, const QString &destination) {
+    QJsonObject status;
+    status["Command"] = "GetStatus";
+    status["Destination"] = destination;
+    status["ErrorCode"] = 0;
+    status["ErrorMessage"] = "";
+    status["ExpiredAt"] = m_telescopeState->getExpiredAt();
+    status["SequenceID"] = sequenceId;
+    status["Source"] = "LedRing";
+    status["Type"] = "Response";
+    status["Level"] = m_telescopeState->ledBrightnessLevel;
+
+    sendJsonMessage(wsConn, status);
+}
+
+void StatusSender::sendElPanelStatus(WebSocketConnection *wsConn, int sequenceId, const QString &destination) {
+    QJsonObject status;
+    status["Command"] = "GetStatus";
+    status["Destination"] = destination;
+    status["ErrorCode"] = 0;
+    status["ErrorMessage"] = "";
+    status["ExpiredAt"] = m_telescopeState->getExpiredAt();
+    status["SequenceID"] = sequenceId;
+    status["Source"] = "ElPanel";
+    status["Type"] = "Response";
+    status["IsLightOn"] = m_telescopeState->lightOn;
+    status["Level"] = m_telescopeState->lightLevel;
+
+    sendJsonMessage(wsConn, status);
+}
+
+void StatusSender::sendNetworkStatus(WebSocketConnection *wsConn, int sequenceId, const QString &destination) {
+    QJsonObject status;
+    status["Command"] = "GetStatus";
+    status["Destination"] = destination;
+    status["ErrorCode"] = 0;
+    status["ErrorMessage"] = "";
+    status["ExpiredAt"] = m_telescopeState->getExpiredAt();
+    status["SequenceID"] = sequenceId;
+    status["Source"] = "Network";
+    status["Type"] = "Response";
+    status["Connected"] = true;
+    status["ForceDirectConnect"] = m_telescopeState->forceDirectConnect;
+
+    sendJsonMessage(wsConn, status);
+}
+
+void StatusSender::sendLiveStreamStatus(WebSocketConnection *wsConn, int sequenceId, const QString &destination) {
+    QJsonObject status;
+    status["Command"] = "GetStatus";
+    status["Destination"] = destination;
+    status["ErrorCode"] = 0;
+    status["ErrorMessage"] = "";
+    status["ExpiredAt"] = m_telescopeState->getExpiredAt();
+    status["SequenceID"] = sequenceId;
+    status["Source"] = "LiveStream";
+    status["Type"] = "Response";
+    status["EnableManual"] = m_telescopeState->isManualMode;
+    status["Disabled"] = m_telescopeState->liveStreamDisabled;
+
+    sendJsonMessage(wsConn, status);
+}
+
+void StatusSender::sendOpticsStatus(WebSocketConnection *wsConn, int sequenceId, const QString &destination) {
+    QJsonObject status;
+    status["Command"] = "GetStatus";
+    status["Destination"] = destination;
+    status["ErrorCode"] = 0;
+    status["ErrorMessage"] = "";
+    status["ExpiredAt"] = m_telescopeState->getExpiredAt();
+    status["SequenceID"] = sequenceId;
+    status["Source"] = "Optics";
+    status["Type"] = "Response";
+    status["Model"] = m_telescopeState->opticsModel;
+    status["FocalLength"] = m_telescopeState->focalLength;
+    status["Aperture"] = m_telescopeState->aperture;
+
+    sendJsonMessage(wsConn, status);
+}
+
+void StatusSender::sendHostControllerStatus(WebSocketConnection *wsConn, int sequenceId, const QString &destination) {
+    QJsonObject status;
+    status["Command"] = "GetStatus";
+    status["Destination"] = destination;
+    status["ErrorCode"] = 0;
+    status["ErrorMessage"] = "";
+    status["ExpiredAt"] = m_telescopeState->getExpiredAt();
+    status["SequenceID"] = sequenceId;
+    status["Source"] = "HostController";
+    status["Type"] = "Response";
+    status["DeviceIsHost"] = m_telescopeState->deviceIsHost;
+
+    sendJsonMessage(wsConn, status);
+}
+
+void StatusSender::sendCameraStatus(WebSocketConnection *wsConn, int sequenceId, const QString &destination) {
+    QJsonObject status;
+    status["Command"] = "GetStatus";
+    status["Destination"] = destination;
+    status["ErrorCode"] = 0;
+    status["ErrorMessage"] = "";
+    status["ExpiredAt"] = m_telescopeState->getExpiredAt();
+    status["SequenceID"] = sequenceId;
+    status["Source"] = "Camera";
+    status["Type"] = "Response";
+    status["Binning"] = m_telescopeState->binning;
+    status["Exposure"] = m_telescopeState->exposure;
+    status["ISO"] = m_telescopeState->iso;
+    status["CoolingEnabled"] = m_telescopeState->coolingEnabled;
+    status["CoolingTargetTemp"] = m_telescopeState->coolingTargetTemp;
+    status["CameraTemperature"] = m_telescopeState->cameraTemperature;
+
+    sendJsonMessage(wsConn, status);
 }

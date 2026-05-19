@@ -34,9 +34,22 @@ public:
     bool isAvailable() const { return m_available; }
     int  catalogueSize() const { return int(m_dsos.size()); }
 
+    // Live mutator — picked up on the next paintInto() call (each frame).
+    void setAttenuation(double a) { m_attenuation = (a > 0.0) ? a : 1.0; }
+    double attenuation() const    { return m_attenuation; }
+
     // For the single-DSO startup mode: returns the center RA/Dec (degrees) of
     // the sole entry if exactly one DSO is loaded; false otherwise.
     bool singleCenterCoords(double& raDeg, double& decDeg) const;
+
+    // Find the DSO with the largest searchRadiusDeg whose footprint overlaps
+    // a field centred at (ra_center_deg, dec_center_deg) with the given
+    // half-diagonal. Returns a clean name derived from imageUrl (basename
+    // without extension, leading char uppercased, hyphens kept) — e.g.
+    // "m27.png" → "M27", "ngc-7000.png" → "Ngc-7000". Empty if no DSO sits
+    // in view, or the overlay isn't loaded.
+    QString largestVisible(double ra_center_deg, double dec_center_deg,
+                           double halfDiagDeg) const;
 
     // Add DSO contributions to the float RGB buffers. The projection
     // parameters mirror those used by GaiaStarFieldRenderer::renderField so

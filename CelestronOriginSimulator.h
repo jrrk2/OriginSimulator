@@ -40,12 +40,37 @@ public:
     // dsoAttenuation multiplies the DSO overlay's per-pixel ADU contribution
     // (1.0 = calibrated default, set via --dso-attenuation=N).
     // bortleClass 1..9 — sky-photon contribution to the pedestal (--bortle=N).
+    // astroDir overrides the default Astrophotography directory path used to
+    // serve real captured sessions; empty → keep TelescopeState default.
     explicit CelestronOriginSimulator(const QString& dsoFilter = {},
                                       bool rayleighEnabled = false,
                                       double dsoAttenuation = 1.0,
                                       int bortleClass = 5,
+                                      const QString& astroDir = {},
                                       QObject *parent = nullptr);
     ~CelestronOriginSimulator();
+
+    // ---------------- GUI surface ----------------
+    // Read-only state polling.
+    const TelescopeState* state() const     { return m_telescopeState; }
+    int  connectedClientCount() const       { return m_webSocketClients.size(); }
+    int  dsoCatalogueSize() const           { return m_dsoOverlay ? m_dsoOverlay->catalogueSize() : 0; }
+    QString lastImageType() const           { return m_telescopeState ? m_telescopeState->imageType : QString(); }
+
+    // Live mutators picked up on the next render/imaging tick.
+    bool   rayleighEnabled() const          { return m_rayleighEnabled; }
+    void   setRayleighEnabled(bool b)       { m_rayleighEnabled = b; }
+    int    bortleClass() const              { return m_bortleClass; }
+    void   setBortleClass(int b)            { m_bortleClass = qBound(1, b, 9); }
+    double dsoAttenuation() const           { return m_dsoOverlay ? m_dsoOverlay->attenuation() : 1.0; }
+    void   setDsoAttenuation(double a)      { if (m_dsoOverlay) m_dsoOverlay->setAttenuation(a); }
+
+    // Stop in-flight imaging (equivalent to a CancelImaging WS command).
+    void   guiHaltImaging()
+    {
+        if (m_telescopeState) m_telescopeState->isImaging = false;
+        if (m_imagingTimer)   m_imagingTimer->stop();
+    }
 
 private slots:
     void handleNewConnection();
@@ -131,6 +156,13 @@ private:
     void onImageReady(const QByteArray& tiffData);
     void rebuildPreviewJpeg(const QByteArray& tiffSrc, QByteArray& jpegDst, const char* label);
     void updateImaging();
+    // Writes Light<NNNNN>.fits (Bayer GBRG mono, int16/BZERO=32768) for the
+    // current stack-depth tick into the active session directory under
+    // astroBaseDir. Samples the just-rendered RGB stack TIFF at each Bayer
+    // position. Returns true on success.
+    bool writeLightFitsForCurrentFrame();
+    // Writes info.json (StackedInfo metadata) into the session directory.
+    void writeSessionInfoJson();
   
     // Absolute paths for image serving
     QString m_absoluteTempDir;

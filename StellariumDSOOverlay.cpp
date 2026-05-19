@@ -107,6 +107,40 @@ bool StellariumDSOOverlay::singleCenterCoords(double& raDeg, double& decDeg) con
     return true;
 }
 
+QString StellariumDSOOverlay::largestVisible(double ra_center_deg,
+                                              double dec_center_deg,
+                                              double halfDiagDeg) const
+{
+    if (!m_available || m_dsos.empty())
+        return QString();
+
+    int    bestIdx    = -1;
+    double bestRadius = 0.0;
+    for (size_t i = 0; i < m_dsos.size(); ++i) {
+        const DSO& d = m_dsos[i];
+        const double sep = angularSepDeg(d.centerRa, d.centerDec,
+                                         ra_center_deg, dec_center_deg);
+        // Footprint-overlap test mirrors paintInto's quick-reject.
+        if (sep > halfDiagDeg + d.searchRadiusDeg) continue;
+        if (d.searchRadiusDeg > bestRadius) {
+            bestRadius = d.searchRadiusDeg;
+            bestIdx    = int(i);
+        }
+    }
+    if (bestIdx < 0)
+        return QString();
+
+    // imageUrl is the tile basename, e.g. "m27.png", "ngc-7000.png".
+    // Strip extension, leading-char uppercase; hyphens left as-is so the
+    // identifier (M27, NGC-7000) stays recognisable in folder names.
+    QString name = m_dsos[bestIdx].imageUrl;
+    const int dot = name.lastIndexOf(QChar('.'));
+    if (dot > 0) name.truncate(dot);
+    if (!name.isEmpty())
+        name[0] = name[0].toUpper();
+    return name;
+}
+
 void StellariumDSOOverlay::paintInto(std::vector<float>& imgR,
                                      std::vector<float>& imgG,
                                      std::vector<float>& imgB,

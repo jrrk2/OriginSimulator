@@ -30,7 +30,17 @@ public:
     void sendSystemModel(WebSocketConnection *wsConn, int sequenceId, const QString &destination);
     void sendCameraFilter(WebSocketConnection *wsConn, int sequenceId, const QString &destination);
     void sendCalibrationStatus(WebSocketConnection *wsConn, int sequenceId, const QString &destination);
-    
+
+    // New destination status senders
+    void sendAutoguiderStatus(WebSocketConnection *wsConn, int sequenceId, const QString &destination);
+    void sendLedRingStatus(WebSocketConnection *wsConn, int sequenceId, const QString &destination);
+    void sendElPanelStatus(WebSocketConnection *wsConn, int sequenceId, const QString &destination);
+    void sendNetworkStatus(WebSocketConnection *wsConn, int sequenceId, const QString &destination);
+    void sendLiveStreamStatus(WebSocketConnection *wsConn, int sequenceId, const QString &destination);
+    void sendOpticsStatus(WebSocketConnection *wsConn, int sequenceId, const QString &destination);
+    void sendHostControllerStatus(WebSocketConnection *wsConn, int sequenceId, const QString &destination);
+    void sendCameraStatus(WebSocketConnection *wsConn, int sequenceId, const QString &destination);
+
     // Broadcast methods (send to all clients)
     void sendMountStatusToAll() { sendMountStatus(); }
     void sendFocuserStatusToAll() { sendFocuserStatus(); }

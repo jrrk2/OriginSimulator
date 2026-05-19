@@ -2,6 +2,7 @@
 #include <QApplication>
 #include <QJsonDocument>
 #include <QJsonObject>
+#include <QUuid>
 #include <QDateTime>
 #include <QNetworkInterface>
 #include <QDir>
@@ -107,9 +108,11 @@ double parallacticAngleRad(double haRad, double decRad, double latRad) {
 }
 } // namespace
 
-CelestronOriginSimulator::CelestronOriginSimulator(const QString& dsoFilter, bool rayleighEnabled, double dsoAttenuation, int bortleClass, QObject *parent) : QObject(parent), m_rayleighEnabled(rayleighEnabled), m_bortleClass(bortleClass) {
+CelestronOriginSimulator::CelestronOriginSimulator(const QString& dsoFilter, bool rayleighEnabled, double dsoAttenuation, int bortleClass, const QString& astroDir, QObject *parent) : QObject(parent), m_rayleighEnabled(rayleighEnabled), m_bortleClass(bortleClass) {
     // Initialize core components
     m_telescopeState = new TelescopeState();
+    if (!astroDir.isEmpty())
+        m_telescopeState->astroBaseDir = astroDir;
     m_commandHandler = new CommandHandler(m_telescopeState, this);
     m_statusSender = new StatusSender(m_telescopeState, this);
 
@@ -120,63 +123,84 @@ CelestronOriginSimulator::CelestronOriginSimulator(const QString& dsoFilter, boo
     // Initialize Gaia star field renderer (parks at the pole).
     setupGaiaRenderer();
 
-    // --dso=<name> workaround: enable the Stellarium overlay restricted to one
-    // matching DSO and re-park the mount at its center, so the App's first
-    // live preview already shows the target. Sidesteps both the search-bug
-    // crash and the "Can't see stars" caused by a many-DSO overlay.
-    if (!dsoFilter.isEmpty()) {
+    // Always create the Stellarium overlay so DSOs that fall in the FOV are
+    // rendered into STACKED_MASTER/SNAPSHOT frames, regardless of pointing.
+    // The overlay's paintInto() does a per-tile FOV reject so off-field DSOs
+    // cost nothing per frame. When --dso=<frag> is supplied AND it matches
+    // exactly one tile, we additionally re-park the mount at that target so
+    // the App's first preview is already on it.
+    {
         const QString nebDir =
             "/Applications/Stellarium.app/Contents/Resources/nebulae/default";
         auto* overlay = new StellariumDSOOverlay(nebDir, dsoFilter, dsoAttenuation);
-        if (overlay->isAvailable() && overlay->catalogueSize() == 1) {
-            double raDeg = 0, decDeg = 0;
-            overlay->singleCenterCoords(raDeg, decDeg);
-
-            const double raRad  = raDeg  * M_PI / 180.0;
-            const double decRad = decDeg * M_PI / 180.0;
-            const double lat    = m_telescopeState->latitude;
-            const double jd     = m_telescopeState->computeJD();
-            const double lstRad = computeLSTRad(jd, m_telescopeState->longitude);
-            const double haRad  = lstRad - raRad;
-            double sinAlt = std::sin(lat) * std::sin(decRad)
-                          + std::cos(lat) * std::cos(decRad) * std::cos(haRad);
-            if (sinAlt >  1.0) sinAlt =  1.0;
-            if (sinAlt < -1.0) sinAlt = -1.0;
-            const double altRad = std::asin(sinAlt);
-            double cosAz = (std::sin(decRad) - std::sin(lat) * sinAlt)
-                         / (std::cos(lat) * std::cos(altRad));
-            if (cosAz >  1.0) cosAz =  1.0;
-            if (cosAz < -1.0) cosAz = -1.0;
-            double azRad = std::acos(cosAz);
-            if (std::sin(haRad) > 0) azRad = 2.0 * M_PI - azRad;
-
-            m_telescopeState->baseRA  = raRad;
-            m_telescopeState->baseDec = decRad;
-            m_telescopeState->ra      = raRad;
-            m_telescopeState->dec     = decRad;
-            m_telescopeState->altitude = altRad;
-            m_telescopeState->azimuth  = azRad;
-            m_hasParAngleRef = false;   // recapture field-rotation reference
-            m_walkRA = 0.0; m_walkDec = 0.0; // discard pole-render drift
-
-            m_dsoOverlay = overlay;
-            qDebug() << "DSO startup: parked at" << dsoFilter
-                     << QString("RA=%1° Dec=%2° Alt=%3° Az=%4°")
-                          .arg(raDeg, 0, 'f', 4).arg(decDeg, 0, 'f', 4)
-                          .arg(altRad * 180.0 / M_PI, 0, 'f', 2)
-                          .arg(azRad  * 180.0 / M_PI, 0, 'f', 2);
-            qDebug() << "DSO will appear only in STACKED_MASTER and SNAPSHOT frames"
-                     << "(start imaging in the App to see it).";
-            if (altRad < 0)
-                qWarning() << "DSO startup: target is below horizon at current time/location";
-            renderGaiaImageForPosition(raDeg, decDeg);
-        } else {
-            qWarning() << "DSO filter" << dsoFilter << "matched"
-                       << overlay->catalogueSize()
-                       << "tiles — pass a more specific name (e.g. --dso=m51-vasey)";
+        if (!overlay->isAvailable()) {
+            qWarning() << "Stellarium DSO catalogue unavailable at" << nebDir
+                       << "— no DSOs will be rendered.";
             delete overlay;
+        } else {
+            m_dsoOverlay = overlay;
+            qDebug() << "DSO overlay: loaded" << overlay->catalogueSize()
+                     << "tiles"
+                     << (dsoFilter.isEmpty()
+                            ? "(full catalogue)"
+                            : ("filtered by '" + dsoFilter + "'").toUtf8().constData());
+
+            // Re-park only when --dso= narrows the catalogue to exactly one tile.
+            if (!dsoFilter.isEmpty() && overlay->catalogueSize() == 1) {
+                double raDeg = 0, decDeg = 0;
+                overlay->singleCenterCoords(raDeg, decDeg);
+
+                const double raRad  = raDeg  * M_PI / 180.0;
+                const double decRad = decDeg * M_PI / 180.0;
+                const double lat    = m_telescopeState->latitude;
+                const double jd     = m_telescopeState->computeJD();
+                const double lstRad = computeLSTRad(jd, m_telescopeState->longitude);
+                const double haRad  = lstRad - raRad;
+                double sinAlt = std::sin(lat) * std::sin(decRad)
+                              + std::cos(lat) * std::cos(decRad) * std::cos(haRad);
+                if (sinAlt >  1.0) sinAlt =  1.0;
+                if (sinAlt < -1.0) sinAlt = -1.0;
+                const double altRad = std::asin(sinAlt);
+                double cosAz = (std::sin(decRad) - std::sin(lat) * sinAlt)
+                             / (std::cos(lat) * std::cos(altRad));
+                if (cosAz >  1.0) cosAz =  1.0;
+                if (cosAz < -1.0) cosAz = -1.0;
+                double azRad = std::acos(cosAz);
+                if (std::sin(haRad) > 0) azRad = 2.0 * M_PI - azRad;
+
+                m_telescopeState->baseRA  = raRad;
+                m_telescopeState->baseDec = decRad;
+                m_telescopeState->ra      = raRad;
+                m_telescopeState->dec     = decRad;
+                m_telescopeState->altitude = altRad;
+                m_telescopeState->azimuth  = azRad;
+                m_hasParAngleRef = false;   // recapture field-rotation reference
+                m_walkRA = 0.0; m_walkDec = 0.0; // discard pole-render drift
+
+                qDebug() << "DSO startup: parked at" << dsoFilter
+                         << QString("RA=%1° Dec=%2° Alt=%3° Az=%4°")
+                              .arg(raDeg, 0, 'f', 4).arg(decDeg, 0, 'f', 4)
+                              .arg(altRad * 180.0 / M_PI, 0, 'f', 2)
+                              .arg(azRad  * 180.0 / M_PI, 0, 'f', 2);
+                if (altRad < 0)
+                    qWarning() << "DSO startup: target is below horizon at "
+                                  "current time/location";
+                renderGaiaImageForPosition(raDeg, decDeg);
+            } else if (!dsoFilter.isEmpty()) {
+                qDebug() << "DSO filter" << dsoFilter << "matched"
+                         << overlay->catalogueSize()
+                         << "tiles — not re-parking (need exactly one match).";
+            }
+            qDebug() << "DSOs render only in STACKED_MASTER / SNAPSHOT frames "
+                        "(not LIVE previews).";
         }
     }
+
+    // Hand the overlay to CommandHandler so RunImaging can auto-name an
+    // unnamed session after the largest DSO currently in view (avoids the
+    // "Untitled_<timestamp>" folder pile-up).
+    if (m_commandHandler != nullptr)
+        m_commandHandler->setDsoOverlay(m_dsoOverlay);
     
     if (m_tcpServer->listen(QHostAddress::Any, SERVER_PORT)) {
         setupConnections();
@@ -336,10 +360,42 @@ void CelestronOriginSimulator::renderGaiaImageForPosition(double ra_deg, double 
     const StellariumDSOOverlay* overlayForThisFrame =
         m_pendingSnapshotNotify ? m_dsoOverlay : nullptr;
 
+    // Build Exif/GPS/MakerNote metadata only for the Astrophotography path —
+    // the Origin App's file manager refuses to download a stacked master
+    // without the MakerNote JSON identifying objectName/UUID/celestial coords.
+    TiffMetadata tmeta;
+    const bool isAstro = m_pendingSnapshotNotify
+                      && m_pendingSnapshotPath.contains("Astrophotography");
+    if (isAstro) {
+        tmeta.raRad          = ra_actual  * M_PI / 180.0;
+        tmeta.decRad         = dec_actual * M_PI / 180.0;
+        tmeta.orientationRad = parAngleRad;
+        tmeta.latRad         = m_telescopeState->latitude;
+        tmeta.lonRad         = m_telescopeState->longitude;
+        tmeta.exposureSec    = std::max(0.0, m_telescopeState->exposure);
+        tmeta.iso            = m_telescopeState->iso;
+        tmeta.stackDepth     = std::max(1, m_telescopeState->stackDepth);
+        tmeta.imageWidth     = OUTPUT_WIDTH;
+        tmeta.imageHeight    = OUTPUT_HEIGHT;
+        tmeta.stretchBackground = 0.035;
+        tmeta.stretchStrength   = 0.9;  // STACKED_MASTER / FinalStackedMaster
+        // Prefer the active imaging session's identifiers; fall back to
+        // deriving the object name from the directory portion of the path.
+        if (!m_telescopeState->imagingObjectName.isEmpty())
+            tmeta.objectName = m_telescopeState->imagingObjectName;
+        else {
+            const QStringList parts = m_pendingSnapshotPath.split('/');
+            if (parts.size() >= 3) tmeta.objectName = parts.at(parts.size() - 2);
+        }
+        if (!m_telescopeState->imagingUuid.isEmpty())
+            tmeta.uuid = m_telescopeState->imagingUuid;
+    }
+
     QByteArray tiff = m_gaiaRenderer->renderField(
         ra_actual, dec_actual, OUTPUT_WIDTH, OUTPUT_HEIGHT, PIXSCALE_ARCSEC,
         sky, fieldRotDeg, exposureRotDeg, overlayForThisFrame,
-        std::max(1, m_telescopeState->stackDepth));
+        std::max(1, m_telescopeState->stackDepth),
+        isAstro ? &tmeta : nullptr);
 
     if (!tiff.isEmpty()) {
         onImageReady(tiff);
@@ -366,27 +422,41 @@ void CelestronOriginSimulator::onImageReady(const QByteArray& tiffData) {
 
     if (m_pendingSnapshotNotify) {
         // Distinguish continuous imaging (STACKED_MASTER, .jpg) from one-shot
-        // RunSampleCapture (SNAPSHOT, .tiff). The path tells us which.
+        // RunSampleCapture (SAMPLE_CAPTURE, .tiff). The path tells us which.
+        // Real telescope captures (origin1.pcapng) use the literal string
+        // "SAMPLE_CAPTURE" — we previously emitted "SNAPSHOT" which doesn't
+        // match the ImageType enum the App expects.
         if (m_pendingSnapshotPath.contains("StackedMaster"))
             m_telescopeState->imageType = "STACKED_MASTER";
         else
-            m_telescopeState->imageType = "SNAPSHOT";
+            m_telescopeState->imageType = "SAMPLE_CAPTURE";
         m_telescopeState->fileLocation = m_pendingSnapshotPath;
         m_pendingSnapshotNotify = false;
         qDebug() << m_telescopeState->imageType << "ready:"
                  << m_telescopeState->fileLocation;
+
+        // Persist disk artefacts BEFORE notifying clients, so anyone listening
+        // for NewImageReady (PixInsight's live stacker polls info.json on the
+        // back of these notifications) sees consistent state on the very
+        // first fetch attempt. info.json is rewritten every frame so its
+        // stackedDepth tracks the running total — previously only frame 1
+        // wrote it, leaving stackedDepth stuck at 1 forever.
+        if (m_telescopeState->imageType == "STACKED_MASTER") {
+            writeLightFitsForCurrentFrame();
+            writeSessionInfoJson();
+        }
     } else {
         m_telescopeState->fileLocation = m_telescopeState->getNextImageFile();
         m_telescopeState->imageType = "LIVE";
         m_telescopeState->sequenceNumber++;
     }
 
-    // Notify clients
+    // Notify clients (post-disk-write, see above).
     m_statusSender->sendNewImageReadyToAll();
 
     // After sending the one-off notification, reset to normal live mode so
     // the next LIVE preview broadcast uses Temp/N.jpg semantics again.
-    if (m_telescopeState->imageType == "SNAPSHOT"
+    if (m_telescopeState->imageType == "SAMPLE_CAPTURE"
      || m_telescopeState->imageType == "STACKED_MASTER") {
         m_telescopeState->imageType = "LIVE";
         m_telescopeState->fileLocation.clear();
@@ -445,6 +515,249 @@ void CelestronOriginSimulator::rebuildPreviewJpeg(const QByteArray& tiffSrc, QBy
     qDebug() << "Preview JPEG built [" << label << "]:" << jpegDst.size() << "bytes";
 }
 
+namespace {
+// FITS card formatter: 80-char ASCII record, value in cols 11-30 (right-
+// aligned numbers / quoted strings), comment after " / ", space-padded.
+QByteArray fitsCard(const QByteArray& key, const QByteArray& valueField, const QByteArray& comment)
+{
+    QByteArray k = key.leftJustified(8, ' ', true);
+    QByteArray card = k + "= " + valueField;
+    if (!comment.isEmpty()) {
+        if (card.size() < 31) card = card.leftJustified(30, ' ', true);
+        card += " / " + comment;
+    }
+    return card.leftJustified(80, ' ', true);
+}
+QByteArray fitsString(const QByteArray& key, const QByteArray& s, const QByteArray& comment)
+{
+    // Value field: 'string                ' padded to ≥8 chars inside quotes.
+    QByteArray padded = s.leftJustified(8, ' ');
+    return fitsCard(key, "'" + padded + "'", comment);
+}
+QByteArray fitsInt(const QByteArray& key, qint64 v, const QByteArray& comment)
+{
+    return fitsCard(key, QByteArray::number(v).rightJustified(20, ' '), comment);
+}
+QByteArray fitsBool(const QByteArray& key, bool v, const QByteArray& comment)
+{
+    return fitsCard(key, QByteArray(19, ' ') + (v ? 'T' : 'F'), comment);
+}
+QByteArray fitsFloat(const QByteArray& key, double v, int prec, const QByteArray& comment)
+{
+    QByteArray num = QByteArray::number(v, 'g', prec);
+    if (!num.contains('.') && !num.contains('e') && !num.contains('E')) num += ".";
+    return fitsCard(key, num.rightJustified(20, ' '), comment);
+}
+QByteArray fitsBlankCard()
+{
+    return QByteArray(80, ' ');
+}
+QByteArray fitsCommentCard(const QByteArray& text)
+{
+    QByteArray c = "COMMENT " + text;
+    return c.leftJustified(80, ' ', true);
+}
+QByteArray fitsEndCard()
+{
+    return QByteArray("END").leftJustified(80, ' ', true);
+}
+} // namespace
+
+bool CelestronOriginSimulator::writeLightFitsForCurrentFrame()
+{
+    // Need: a fresh stack-render in m_imageDataStack and an active session.
+    if (m_imageDataStack.isEmpty()) {
+        qWarning() << "writeLightFits: skipped — m_imageDataStack is empty "
+                      "(renderer didn't produce a TIFF yet?)";
+        return false;
+    }
+    if (m_telescopeState->imagingSessionDir.isEmpty()) {
+        qWarning() << "writeLightFits: skipped — imagingSessionDir is empty";
+        return false;
+    }
+
+    constexpr int pixelOffset = 8;
+    constexpr int W = OUTPUT_WIDTH, H = OUTPUT_HEIGHT;
+    constexpr qsizetype needed = pixelOffset + qsizetype(W) * H * 3 * 2;
+    if (m_imageDataStack.size() < needed) {
+        qWarning() << "writeLightFits: skipped — stack TIFF too small ("
+                   << m_imageDataStack.size() << "bytes, need" << needed << ")";
+        return false;
+    }
+
+    const QDateTime nowLocal = QDateTime::currentDateTime();
+    const QString sessionDir = m_telescopeState->imagingSessionDir;
+    const QString dirPath = QDir(m_telescopeState->astroBaseDir).filePath(sessionDir);
+    if (!QDir().mkpath(dirPath)) {
+        qWarning() << "writeLightFits: mkpath failed:" << dirPath
+                   << "(astroBaseDir=" << m_telescopeState->astroBaseDir << ")";
+        return false;
+    }
+    const QString filePath = dirPath +
+        QString("/Light%1.fits").arg(m_telescopeState->stackDepth, 5, 10, QChar('0'));
+
+    // ---- Header ----
+    QByteArray hdr;
+    auto offset = [](const QString& s) { return s.toLatin1(); };
+    hdr += fitsBool ("SIMPLE",  true,  "file does conform to FITS standard");
+    hdr += fitsInt  ("BITPIX",  16,    "number of bits per data pixel");
+    hdr += fitsInt  ("NAXIS",   2,     "number of data axes");
+    hdr += fitsInt  ("NAXIS1",  W,     "length of data axis 1");
+    hdr += fitsInt  ("NAXIS2",  H,     "length of data axis 2");
+    hdr += fitsBool ("EXTEND",  true,  "FITS dataset may contain extensions");
+    hdr += fitsInt  ("BZERO",   32768, "offset data range to that of unsigned short");
+    hdr += fitsInt  ("BSCALE",  1,     "default scaling factor");
+    hdr += fitsString("CREATOR", "Origin 1.2.5227", "Build Date: 08-15-2025 17:51");
+    hdr += fitsString("DATE-OBS", nowLocal.toString("yyyy-MM-ddTHH:mm:ss").toLatin1(),
+                                  "Start of exposure (local time)");
+    // Numeric timezone offset "+HHMM"
+    int tzSec = nowLocal.offsetFromUtc();
+    QByteArray tz = (tzSec >= 0 ? "+" : "-")
+                  + QByteArray::number(std::abs(tzSec)/3600).rightJustified(2, '0')
+                  + QByteArray::number((std::abs(tzSec)%3600)/60).rightJustified(2, '0');
+    hdr += fitsString("TIMEZONE", tz, "Start of exposure (local time zone)");
+    hdr += fitsFloat("EXPTIME",  std::max(0.0, m_telescopeState->exposure), 8, "Subframe exposure time (seconds)");
+    hdr += fitsInt  ("ISOSPEED", m_telescopeState->iso, "ISO speed");
+    hdr += fitsFloat("EGAIN",    0.07417014, 8, "True gain (e- per ADU)");
+    hdr += fitsBool ("AUTOEXP",  true,  "Auto exposure");
+    hdr += fitsString("CAMERA",  "Origin178-de23b446d56b2faa5", "Camera model-ID");
+    hdr += fitsInt  ("XBINNING", 1,     "Binning (X)");
+    hdr += fitsInt  ("YBINNING", 1,     "Binning (Y)");
+    hdr += fitsFloat("XPIXSZ",   2.4, 4,"Pixel size (X), microns");
+    hdr += fitsFloat("YPIXSZ",   2.4, 4,"Pixel size (Y), microns");
+    hdr += fitsFloat("APERTURE", 152.4, 8, "Telescope aperture, mm");
+    hdr += fitsFloat("FOCALLEN", 335.0, 4, "Focal length, mm");
+    hdr += fitsFloat("CCD-TEMP", 23.2, 4, "Sensor temperature (degrees C)");
+    hdr += fitsFloat("LATITUDE", m_telescopeState->latitude  * 180.0 / M_PI, 12, "GPS latitude (degrees, east positive)");
+    hdr += fitsFloat("LONGITUD", m_telescopeState->longitude * 180.0 / M_PI, 12, "GPS longitude (degrees, north positive)");
+    hdr += fitsFloat("ALTITUDE", 0.0, 1, "GPS altitude (meters)");
+    QByteArray obj = m_telescopeState->imagingObjectName.isEmpty()
+                     ? QByteArray("Origin Capture")
+                     : m_telescopeState->imagingObjectName.toLatin1();
+    hdr += fitsString("OBJECT",  obj, "Object name");
+    hdr += fitsFloat("EQUINOX",  2000.0, 6, "J2000");
+    hdr += fitsString("CTYPE1",  "RA---TAN", "Gnomonic (tangent plane) projection");
+    hdr += fitsString("CTYPE2",  "DEC--TAN", "Gnomonic (tangent plane) projection");
+    hdr += fitsString("CUNIT1",  "deg",      "Angles are all in degrees");
+    const double raDeg  = m_telescopeState->ra  * 180.0 / M_PI;
+    const double decDeg = m_telescopeState->dec * 180.0 / M_PI;
+    hdr += fitsFloat("RA",       raDeg,  12, "J2000 Right Ascension (degrees)");
+    hdr += fitsFloat("DEC",      decDeg, 12, "J2000 Declination (degrees)");
+    hdr += fitsFloat("CRVAL1",   raDeg,  12, "J2000 Right Ascension (degrees)");
+    hdr += fitsFloat("CRVAL2",   decDeg, 12, "J2000 Declination (degrees)");
+    hdr += fitsFloat("CRPIX1",   W / 2.0, 4, "Center pixel X");
+    hdr += fitsFloat("CRPIX2",   H / 2.0, 4, "Center pixel Y");
+    const double pixscaleDeg = PIXSCALE_ARCSEC / 3600.0;
+    hdr += fitsFloat("CDELT1",  -pixscaleDeg, 12, "Image scale X (deg/pix, <0=left-right)");
+    hdr += fitsFloat("CDELT2",   pixscaleDeg, 12, "Image scale Y (deg/pix, <0=top-bottom)");
+    hdr += fitsFloat("CROTA1",   0.0, 6, "Orientation of X from east (degrees)");
+    hdr += fitsFloat("CROTA2",   0.0, 6, "Orientation of Y from north (degrees)");
+    hdr += fitsFloat("ORIENTAT", 0.0, 6, "Orientation of Y from north (degrees)");
+    hdr += fitsFloat("AIRMASS",  1.0, 6, "Atmosphere thickness relative to zenith");
+    hdr += fitsString("FILTER",  "Clear", "Filter used on camera when image was taken");
+    hdr += fitsString("BAYERPAT","GBRG", "Bayer pattern on camera sensor");
+    hdr += fitsEndCard();
+
+    // Pad header to multiple of 2880 bytes.
+    if (int rem = hdr.size() % 2880; rem != 0)
+        hdr.append(QByteArray(2880 - rem, ' '));
+
+    // ---- Pixel data: sample RGB → GBRG Bayer, int16 big-endian (= raw - 32768) ----
+    QByteArray pixels(qsizetype(W) * H * 2, Qt::Uninitialized);
+    const quint16* src = reinterpret_cast<const quint16*>(
+                            m_imageDataStack.constData() + pixelOffset);
+    uchar* dst = reinterpret_cast<uchar*>(pixels.data());
+    for (int y = 0; y < H; ++y) {
+        for (int x = 0; x < W; ++x) {
+            // GBRG: (even,even)=G  (even,odd)=B  (odd,even)=R  (odd,odd)=G
+            int chan;
+            if ((y & 1) == 0) chan = (x & 1) ? 2 : 1;  // G/B
+            else              chan = (x & 1) ? 1 : 0;  // R/G
+            const quint16 v = src[(y * W + x) * 3 + chan];
+            // int16 with BZERO=32768 → write (v - 32768) big-endian
+            const qint16 stored = qint16(int(v) - 32768);
+            *dst++ = quint8((stored >> 8) & 0xFF);
+            *dst++ = quint8( stored       & 0xFF);
+        }
+    }
+    if (int rem = pixels.size() % 2880; rem != 0)
+        pixels.append(QByteArray(2880 - rem, '\0'));
+
+    // ---- Write file ----
+    QFile f(filePath);
+    if (!f.open(QIODevice::WriteOnly)) {
+        qWarning() << "writeLightFits: open failed:" << filePath << f.errorString();
+        return false;
+    }
+    f.write(hdr);
+    f.write(pixels);
+    f.close();
+    qDebug() << "Wrote" << filePath << "(" << (hdr.size() + pixels.size()) << "bytes)";
+    return true;
+}
+
+void CelestronOriginSimulator::writeSessionInfoJson()
+{
+    if (m_telescopeState->imagingSessionDir.isEmpty()) return;
+    const QString dirPath = QDir(m_telescopeState->astroBaseDir)
+                              .filePath(m_telescopeState->imagingSessionDir);
+    QDir().mkpath(dirPath);
+    const QString filePath = dirPath + "/info.json";
+
+    QDateTime now = QDateTime::currentDateTime();
+    int tzSec = now.offsetFromUtc();
+    QString tz = (tzSec >= 0 ? "+" : "-")
+               + QString::number(std::abs(tzSec)/3600).rightJustified(2, '0')
+               + QString::number((std::abs(tzSec)%3600)/60).rightJustified(2, '0');
+
+    QJsonObject captureParams;
+    captureParams["autoExposure"] = true;
+    captureParams["binning"]      = 1;
+    captureParams["exposure"]     = m_telescopeState->exposure;
+    captureParams["iso"]          = m_telescopeState->iso;
+    captureParams["temperature"]  = 21.4;
+    QJsonObject celestial;
+    celestial["first"]  = m_telescopeState->ra;
+    celestial["second"] = m_telescopeState->dec;
+    QJsonObject gps;
+    gps["altitude"]  = 0.0;
+    gps["latitude"]  = m_telescopeState->latitude  * 180.0 / M_PI;
+    gps["longitude"] = m_telescopeState->longitude * 180.0 / M_PI;
+    QJsonObject si;
+    si["bayer"]         = "gbrg";
+    si["captureParams"] = captureParams;
+    si["celestial"]     = celestial;
+    si["dateTime"]      = now.toString("yyyy-MM-ddTHH:mm:ss") + tz;
+    si["filter"]        = "Clear";
+    si["fovX"]          = 0.02189285686932017;
+    si["fovY"]          = 0.014671975601117918;
+    si["gps"]           = gps;
+    si["imageHeight"]   = OUTPUT_HEIGHT;
+    si["imageWidth"]    = OUTPUT_WIDTH;
+    si["objectName"]    = m_telescopeState->imagingObjectName.isEmpty()
+                            ? QString("Origin Capture")
+                            : m_telescopeState->imagingObjectName;
+    si["orientation"]   = 0.0;
+    si["stackedDepth"]  = std::max(1, m_telescopeState->stackDepth);
+    si["stretchBackground"] = 0.035;
+    si["stretchStrength"]   = 0.9;
+    si["totalDurationMs"]   = std::max(1, m_telescopeState->stackDepth) * m_telescopeState->exposure * 1000.0;
+    si["uuid"] = m_telescopeState->imagingUuid.isEmpty()
+                   ? QUuid::createUuid().toString(QUuid::WithoutBraces).toUpper()
+                   : m_telescopeState->imagingUuid;
+    QJsonObject root;
+    root["StackedInfo"] = si;
+
+    QFile f(filePath);
+    if (f.open(QIODevice::WriteOnly)) {
+        f.write(QJsonDocument(root).toJson(QJsonDocument::Indented));
+        f.close();
+        qDebug() << "Wrote" << filePath;
+    } else {
+        qWarning() << "writeSessionInfoJson: open failed:" << filePath << f.errorString();
+    }
+}
+
 void CelestronOriginSimulator::updateImaging() {
     // Called every 1s while RunImaging is active. We count down imagingTimeLeft
     // (seconds remaining in the current exposure) and on completion render a
@@ -474,6 +787,13 @@ void CelestronOriginSimulator::updateImaging() {
     renderGaiaImageForPosition(
         m_telescopeState->ra * 180.0 / M_PI,
         m_telescopeState->dec * 180.0 / M_PI);
+
+    // Persist the per-sub raw FITS (Bayer GBRG mono int16) for this
+    // exposure, then re-emit info.json so its stackedDepth reflects the new
+    // total. The disk writes happened inside renderGaiaImageForPosition →
+    // onImageReady BEFORE the NewImageReady notification was sent, which is
+    // the order PixInsight's live stacker relies on (it polls info.json's
+    // stackedDepth to know which Light####.fits files are safe to fetch).
 
     // Restart timer for the next exposure (continuous imaging until
     // CancelImaging / HaltTasks).
@@ -658,6 +978,55 @@ void CelestronOriginSimulator::setupConnections() {
         m_imagingTimer->start(1000);
     });
 
+    // GetFinalStackedMaster: synchronous response carries the FileLocation but
+    // the Origin App actually waits for a NewImageReady notification to
+    // trigger its HTTP fetch. Schedule a delayed render-and-broadcast so the
+    // App's notification handler kicks off the download.
+    connect(m_commandHandler, &CommandHandler::finalStackedMasterRequested, this,
+            [this](const QString& fileLocation, const QString& imageUuid) {
+        QTimer::singleShot(2000, this, [this, fileLocation, imageUuid]() {
+            m_pendingSnapshotPath   = fileLocation;
+            m_pendingSnapshotNotify = true;
+            if (!imageUuid.isEmpty())
+                m_telescopeState->imagingUuid = imageUuid;
+            qDebug() << "Final stacked master: rendering and broadcasting"
+                     << fileLocation;
+            renderGaiaImageForPosition(
+                m_telescopeState->ra  * 180.0 / M_PI,
+                m_telescopeState->dec * 180.0 / M_PI);
+        });
+    });
+
+    // Observation ended (App sent HaltTasks during active imaging): render
+    // the final stacked master and write it to disk in the session directory
+    // so the capture persists between simulator restarts and shows up in the
+    // file manager.
+    connect(m_commandHandler, &CommandHandler::observationEnded, this,
+            [this](const QString& sessionDir, const QString& imageUuid) {
+        const QString fileLocation =
+            QString("Images/Astrophotography/%1/FinalStackedMaster.tiff").arg(sessionDir);
+        m_pendingSnapshotPath   = fileLocation;
+        m_pendingSnapshotNotify = true;
+        if (!imageUuid.isEmpty())
+            m_telescopeState->imagingUuid = imageUuid;
+        qDebug() << "Observation ended: rendering FinalStackedMaster for session" << sessionDir;
+        renderGaiaImageForPosition(
+            m_telescopeState->ra  * 180.0 / M_PI,
+            m_telescopeState->dec * 180.0 / M_PI);
+        // Persist the rendered TIFF to disk (mkpath + write).
+        const QString dirPath = QDir(m_telescopeState->astroBaseDir).filePath(sessionDir);
+        QDir().mkpath(dirPath);
+        const QString tiffPath = dirPath + "/FinalStackedMaster.tiff";
+        QFile f(tiffPath);
+        if (f.open(QIODevice::WriteOnly)) {
+            const qint64 n = f.write(m_imageDataStack);
+            f.close();
+            qDebug() << "Wrote FinalStackedMaster:" << n << "bytes →" << tiffPath;
+        } else {
+            qWarning() << "Could not open" << tiffPath << "for writing:" << f.errorString();
+        }
+    });
+
     // Connect initialization signal
     connect(m_commandHandler, &CommandHandler::initializationStarted, this, [this](bool fakeInit) {
         if (fakeInit) {
@@ -747,11 +1116,12 @@ void CelestronOriginSimulator::updateInitialization() {
     // Send status update with progress
     m_statusSender->sendTaskControllerStatusToAll();
 
-    // Randomly decide if initialization fails (~10% chance per tick before alignment)
-    if (m_initUpdateCount < 9 && QRandomGenerator::global()->bounded(100) < 10) {
-        failInitialization();
-        return;
-    }
+    // (Removed: a 10% random failure roll per tick was injecting a ~57%
+    // chance of init failure across the 8 pre-alignment ticks. That was a
+    // fixture for validating the App's error path; in normal operation it
+    // just leaves the simulator stuck in INITIALIZING. failInitialization
+    // remains reachable via the Error notification path if a future caller
+    // needs it.)
 
     // Complete the initialization
     if (m_initUpdateCount >= 15) {
@@ -783,11 +1153,15 @@ void CelestronOriginSimulator::failInitialization() {
     // Stop the timer
     m_initTimer->stop();
     m_initUpdateCount = 0;
-    
-    // Set failure status
+
+    // Set failure status — and drop state back to IDLE so the GUI (and the
+    // App's state poller) see a real terminal state rather than a frozen
+    // "INITIALIZING". Previously only the sub-fields flipped and the
+    // top-level state was left at "INITIALIZING" forever.
     m_telescopeState->isInitializing = false;
-    m_telescopeState->stage = "STOPPED";
+    m_telescopeState->stage   = "STOPPED";
     m_telescopeState->isReady = false;
+    m_telescopeState->state   = "IDLE";
     
     // Send error notification
     QJsonObject errorNotification;
@@ -884,8 +1258,9 @@ void CelestronOriginSimulator::handleIncomingData(QTcpSocket *socket) {
     
     QString method = requestParts[0];
     QString path = requestParts[1];
-    
-//     qDebug() << "Origin Protocol Request:" << method << path;
+
+    qDebug().noquote() << "HTTP req:" << method << path
+                       << "from" << socket->peerAddress().toString() << ":" << socket->peerPort();
     
     // Check if this is a WebSocket upgrade request
     bool isWebSocketUpgrade = false;
@@ -899,14 +1274,26 @@ void CelestronOriginSimulator::handleIncomingData(QTcpSocket *socket) {
     if (isWebSocketUpgrade && path == "/SmartScope-1.0/mountControlEndpoint") {
         // Handle WebSocket upgrade for telescope control
         handleWebSocketUpgrade(socket, requestData);
-    } else if (method == "GET" && path.startsWith("/SmartScope-1.0/dev2/Images/Temp/")) {
-        // Handle HTTP image request
+    } else if ((method == "GET" || method == "HEAD")
+            && path.startsWith("/SmartScope-1.0/dev2/Images/Temp/")) {
         handleHttpImageRequest(socket, path);
-    } else if (method == "GET" && path.contains("/SmartScope-1.0/dev2/Images/Astrophotography/")) {
-        // Handle HTTP astrophotography image request
+    } else if ((method == "GET" || method == "HEAD")
+            && path.contains("/SmartScope-1.0/dev2/Images/Astrophotography/")) {
         handleHttpAstroImageRequest(socket, path);
+    } else if (method == "OPTIONS") {
+        // CORS / capability probe — let any client know we accept GET/HEAD.
+        QString hdr = "HTTP/1.1 200 OK\r\n"
+                      "Allow: GET, HEAD, OPTIONS\r\n"
+                      "Access-Control-Allow-Origin: *\r\n"
+                      "Access-Control-Allow-Methods: GET, HEAD, OPTIONS\r\n"
+                      "Access-Control-Allow-Headers: *\r\n"
+                      "Content-Length: 0\r\n"
+                      "Connection: close\r\n\r\n";
+        socket->write(hdr.toUtf8());
+        socket->disconnectFromHost();
     } else {
-        // Unknown request
+        // Unknown request — log it so we can see what we're missing.
+        qDebug() << "HTTP unknown:" << method << path << "→ 404";
         sendHttpResponse(socket, 404, "text/plain", "Not Found");
     }
     
@@ -1014,42 +1401,68 @@ void CelestronOriginSimulator::handleHttpAstroImageRequest(QTcpSocket *socket, c
 
     const QString directory = pathParts[pathParts.size() - 2];
     const QString fileName  = pathParts.last();
-    const QString fullPath  = QString("simulator_data/Images/Astrophotography/%1/%2")
-                                .arg(directory, fileName);
-    const bool wantsTiff = fileName.endsWith(".tiff", Qt::CaseInsensitive)
-                        || fileName.endsWith(".tif",  Qt::CaseInsensitive);
+    const QString lower     = fileName.toLower();
+    const bool wantsTiff = lower.endsWith(".tiff") || lower.endsWith(".tif");
+    const bool wantsFits = lower.endsWith(".fits") || lower.endsWith(".fit");
+    const bool wantsJson = lower.endsWith(".json");
 
-    // Prefer a pre-staged file on disk (fixture scenarios); otherwise fall
-    // back to the latest in-memory render (raw TIFF) or the cached stretched
-    // preview (JPEG). A disk file is served as-is, matching the requested
-    // extension's content type.
-    QFile imageFile(fullPath);
-    if (imageFile.exists() && imageFile.open(QIODevice::ReadOnly)) {
-        QByteArray imageData = imageFile.readAll();
-        imageFile.close();
-        sendHttpResponse(socket, 200,
-                         wantsTiff ? "image/tiff" : "image/jpeg",
-                         imageData);
+    // Look on disk first — both in the configured astroBaseDir (real captured
+    // sessions like /Volumes/X10Pro/Astrophotography/...) and in the legacy
+    // fixture path. A disk file is served as-is so callers receive the actual
+    // real-telescope bytes rather than a synthesised stand-in.
+    const QStringList candidatePaths = {
+        QDir(m_telescopeState->astroBaseDir).filePath(directory + "/" + fileName),
+        QString("simulator_data/Images/Astrophotography/%1/%2").arg(directory, fileName),
+    };
+    for (const QString& p : candidatePaths) {
+        QFile imageFile(p);
+        if (imageFile.exists() && imageFile.open(QIODevice::ReadOnly)) {
+            QByteArray imageData = imageFile.readAll();
+            imageFile.close();
+            const char* contentType =
+                wantsFits ? "application/fits"
+              : wantsJson ? "application/json"
+              : wantsTiff ? "image/tiff"
+              :             "image/jpeg";
+            qDebug() << "  astro: serving" << imageData.size()
+                     << "bytes from disk:" << p;
+            sendHttpResponse(socket, 200, contentType, imageData);
+            return;
+        }
+    }
+
+    // FITS / JSON requests are real-files-only — no synthetic fallback. The
+    // simulator's renderer produces TIFF/JPEG; serving those bytes under a
+    // .fits URL would deliver garbage to anything that actually parses FITS.
+    if (wantsFits || wantsJson) {
+        qDebug() << "  astro: 404" << (wantsFits ? "fits" : "json") << "(no disk file)" << fileName;
+        sendHttpResponse(socket, 404, "text/plain", "File not found");
         return;
     }
 
-    // Astrophotography path → STACK cache (DSO-bearing). Fall back to LIVE
-    // cache on the rare case nothing has been imaged yet, so the App doesn't
-    // see a hard 404 for an Astrophotography URL before imaging starts.
+    // Astrophotography .tiff / .jpg paths → STACK cache (DSO-bearing). Fall
+    // back to LIVE cache if nothing has been imaged yet, so a fresh request
+    // for an Astrophotography preview still gets something usable.
     const QByteArray& tiffCache = !m_imageDataStack.isEmpty()  ? m_imageDataStack  : m_imageDataLive;
     const QByteArray& jpegCache = !m_previewJpegStack.isEmpty() ? m_previewJpegStack : m_previewJpegLive;
     if (wantsTiff) {
         if (tiffCache.isEmpty()) {
+            qDebug() << "  astro: 404 tiff (no stack/live tiff cached)";
             sendHttpResponse(socket, 404, "text/plain", "Image not yet rendered");
             return;
         }
+        qDebug() << "  astro: serving" << tiffCache.size() << "bytes image/tiff for" << fileName
+                 << (m_imageDataStack.isEmpty() ? "[fallback LIVE]" : "[STACK]");
         sendHttpResponse(socket, 200, "image/tiff", tiffCache);
         return;
     }
     if (jpegCache.isEmpty()) {
+        qDebug() << "  astro: 404 jpeg (no stack/live jpeg cached)";
         sendHttpResponse(socket, 404, "text/plain", "Preview not yet available");
         return;
     }
+    qDebug() << "  astro: serving" << jpegCache.size() << "bytes image/jpeg for" << fileName
+             << (m_previewJpegStack.isEmpty() ? "[fallback LIVE]" : "[STACK]");
     sendHttpResponse(socket, 200, "image/jpeg", jpegCache);
 }
 
@@ -1095,11 +1508,13 @@ void CelestronOriginSimulator::processWebSocketCommand(const QString &message) {
     QString destination = obj["Destination"].toString();
     QString source = obj["Source"].toString();
 
-    // Log incoming commands
-    fprintf(stderr, "\033[32m<<< RECV [%s] %s->%s/%s\033[0m %s\n",
-            qPrintable(obj["Type"].toString()), qPrintable(source),
-            qPrintable(destination), qPrintable(command),
-            qPrintable(QString::fromUtf8(doc.toJson(QJsonDocument::Compact))));
+    // Log incoming commands via qDebug — bypasses stderr so the GUI's
+    // qInstallMessageHandler can route to the in-window log pane and apply
+    // category filters (WS commands / status broadcasts / HTTP).
+    qDebug("<<< RECV [%s] %s->%s/%s %s",
+           qPrintable(obj["Type"].toString()), qPrintable(source),
+           qPrintable(destination), qPrintable(command),
+           qPrintable(QString::fromUtf8(doc.toJson(QJsonDocument::Compact))));
     
     // Handle status requests directly
     if (command == "GetStatus") {

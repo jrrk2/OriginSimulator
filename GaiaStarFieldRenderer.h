@@ -9,6 +9,41 @@
 
 class StellariumDSOOverlay;
 
+// Metadata for the TIFF Exif / GPS / MakerNote sub-IFDs. The Origin App reads
+// the MakerNote JSON to identify the file's session, target, and acquisition
+// parameters — without it the App reports "Final stacked master does not
+// exist. Cannot download." (i.e. it treats the file as unrecognised).
+struct TiffMetadata {
+    // Pointing (radians)
+    double raRad         = 0.0;
+    double decRad        = 0.0;
+    double fovXRad       = 0.02189285686932017;   // Origin default
+    double fovYRad       = 0.014671975601117918;  // Origin default
+    double orientationRad = 0.0;
+    // Observer (radians)
+    double latRad        = 0.911850314340732;     // Cambridge UK default
+    double lonRad        = 0.0013913674920166123;
+    double altitudeM     = 0.0;
+    // Acquisition
+    double exposureSec   = 10.0;
+    int    iso           = 200;
+    int    stackDepth    = 1;
+    int    imageWidth    = 3056;
+    int    imageHeight   = 2048;
+    // Stretch
+    double stretchBackground = 0.035;
+    double stretchStrength   = 0.9;
+    // Identification
+    QString objectName   = "Origin Capture";
+    QString uuid;                                  // empty → auto-generate
+    QString filter       = "Clear";
+    QString bayer        = "gbrg";
+    // Environment
+    double cameraTempC   = 21.4;
+    // Time — ISO 8601 with timezone offset; empty → use current local time
+    QString isoDateTime;
+};
+
 // Environmental conditions affecting the sky background. Defaults model a
 // suburban Bortle-5 site at zenith with no Moon and no atmospheric scattering.
 struct SkyConditions {
@@ -42,6 +77,8 @@ public:
     // dsoOverlay, if non-null, paints Stellarium's nebula/galaxy/cluster
     // images into the same scene before the TIFF is encoded.
     // Returns a 16-bit RGB TIFF in a QByteArray, or empty on failure.
+    // tiffMeta, if non-null, enriches the TIFF with Exif/GPS/MakerNote
+    // sub-IFDs so the Origin App treats the file as a valid stacked-master.
     QByteArray renderField(double ra_deg, double dec_deg,
                            int width, int height,
                            double pixscale_arcsec,
@@ -49,7 +86,8 @@ public:
                            double cameraRotationDeg = 0.0,
                            double exposureRotationDeg = 0.0,
                            const StellariumDSOOverlay* dsoOverlay = nullptr,
-                           int    stackDepth = 1);
+                           int    stackDepth = 1,
+                           const TiffMetadata* tiffMeta = nullptr);
 
     bool isAvailable() const { return m_available; }
 
@@ -61,7 +99,8 @@ private:
     static QByteArray write16BitRGBTiff(int w, int h,
                                          const std::vector<uint16_t> &r,
                                          const std::vector<uint16_t> &g,
-                                         const std::vector<uint16_t> &b);
+                                         const std::vector<uint16_t> &b,
+                                         const TiffMetadata* meta = nullptr);
 };
 
 #endif // GAIASTARFIELDRENDERER_H

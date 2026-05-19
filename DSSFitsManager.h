@@ -4,51 +4,35 @@
 #include <QObject>
 #include <QNetworkAccessManager>
 #include <QNetworkReply>
-#include <QImage>
 #include <QDir>
 #include <QSettings>
 #include <fitsio.h>
-#include "ProperHipsClient.h"
+#include <vector>
+#include <cmath>
 
-enum class DSSurvey {
-    POSS2UKSTU_RED,
-    POSS2UKSTU_BLUE,
-    POSS2UKSTU_IR,
-    POSS1_RED,
-    POSS1_BLUE,
-    QUICKV
-};
+class GaiaStarFieldRenderer;
 
 struct CachedFitsImage {
-    QString cacheKey;           // Unique identifier
-    double center_ra_deg;       // Center coordinates
+    QString cacheKey;
+    double center_ra_deg;
     double center_dec_deg;
-    double width_arcmin;        // Field size
+    double width_arcmin;
     double height_arcmin;
-    QString irFilePath;         // Paths to cached FITS files
-    QString redFilePath;
-    QString blueFilePath;
+    QString fitsFilePath;       // Single FITS cube file
     QDateTime fetchTime;
-    
+
     bool isValid() const {
-        return QFile::exists(irFilePath) && 
-               QFile::exists(redFilePath) && 
-               QFile::exists(blueFilePath);
+        return QFile::exists(fitsFilePath);
     }
-    
-    bool containsPosition(double ra_deg, double dec_deg, double margin_arcmin = 5.0) const {
-        // Check if position is within the cached area (with margin)
-        double effectiveWidth = width_arcmin - margin_arcmin;
-        double effectiveHeight = height_arcmin - margin_arcmin;
-        
+
+    // Check if we can crop OUTPUT_W x OUTPUT_H centered on (ra,dec) from this tile
+    bool containsPosition(double ra_deg, double dec_deg,
+                          double output_w_arcmin, double output_h_arcmin) const {
         double deltaRA = (ra_deg - center_ra_deg) * cos(center_dec_deg * M_PI / 180.0);
         double deltaDec = dec_deg - center_dec_deg;
-        
-        double deltaRA_arcmin = fabs(deltaRA * 60.0);
-        double deltaDec_arcmin = fabs(deltaDec * 60.0);
-        
-        return (deltaRA_arcmin <= effectiveWidth / 2.0) && 
-               (deltaDec_arcmin <= effectiveHeight / 2.0);
+        double maxOffRA  = (width_arcmin  - output_w_arcmin)  / 2.0;
+        double maxOffDec = (height_arcmin - output_h_arcmin) / 2.0;
+        return (fabs(deltaRA * 60.0) <= maxOffRA) && (fabs(deltaDec * 60.0) <= maxOffDec);
     }
 };
 
@@ -57,11 +41,9 @@ class DSSFitsManager : public QObject {
 
 public:
     explicit DSSFitsManager(QObject *parent = nullptr);
-    
-    // Main interface
+
     void fetchImageForPosition(double ra_deg, double dec_deg);
-    
-    // Cache management
+
     QString getCacheDir() const { return m_cacheDir; }
     void clearCache();
     qint64 getCacheSize() const;
@@ -78,57 +60,41 @@ private slots:
 
 private:
     QNetworkAccessManager* m_networkManager;
+    GaiaStarFieldRenderer* m_gaiaRenderer;
     QString m_cacheDir;
     QSettings* m_cacheIndex;
     QList<CachedFitsImage> m_cachedImages;
-    
-    // Standard fetch size
-    static constexpr double FETCH_SIZE_ARCMIN = 60.0;
-    
-    // Composite tracking
-    struct CompositeRequest {
+
+    // Origin telescope parameters (real sensor: Sony IMX571, 3056x2048 RGB)
+    static constexpr double PIXSCALE_ARCSEC = 1.4777;  // 0.00041047 deg/pixel
+    static constexpr int    FETCH_SIZE_PX   = 3200;    // tile with margin for cache reuse
+    static constexpr int    OUTPUT_WIDTH    = 3056;
+    static constexpr int    OUTPUT_HEIGHT   = 2048;
+
+    // Pending network request
+    struct PendingRequest {
         double ra_deg, dec_deg;
-        double width_arcmin, height_arcmin;
+        double cache_ra, cache_dec;
         QString cacheKey;
-        QByteArray irFits, redFits, blueFits;
-        int completedCount;
-        bool active;
+        QString cachePath;
+        bool active = false;
     };
-    CompositeRequest m_compositeRequest;
-    
+    PendingRequest m_pending;
+
     // Cache management
     void loadCacheIndex();
     void saveCacheIndex();
-    CachedFitsImage* findCachedImageContaining(double ra_deg, double dec_deg);
-    QString generateCacheKey(double ra_deg, double dec_deg);
+    CachedFitsImage* findCachedTileContaining(double ra_deg, double dec_deg);
     void addToCacheIndex(const CachedFitsImage& image);
-    
+
     // Image processing
-    QByteArray cropAndCreateTiff(const CachedFitsImage& cached, 
-                                 double target_ra_deg, double target_dec_deg);
-    QByteArray createRGBTiffFromFits(const QByteArray& irFits,
-                                     const QByteArray& redFits,
-                                     const QByteArray& blueFits,
-                                     double ra_deg, double dec_deg,
-                                     double width_arcmin, double height_arcmin);
-    QImage parseFitsToImage(const QByteArray& fitsData);
-    QImage cropFitsImage(const QImage& fullImage, 
-                        double full_center_ra, double full_center_dec,
-                        double full_width_arcmin, double full_height_arcmin,
-                        double crop_center_ra, double crop_center_dec,
-                        double crop_width_arcmin, double crop_height_arcmin);
-    
-    // Network
-    void fetchNewComposite(double ra_deg, double dec_deg);
-    QString buildDSSUrl(double ra_deg, double dec_deg, 
-                       double width_arcmin, double height_arcmin,
-                       DSSurvey survey);
-    
-    QString surveyToString(DSSurvey survey) const;
-    QByteArray createRGBTiffFromImages(const QImage& irImage,
-						       const QImage& redImage,
-						       const QImage& blueImage,
-						       double ra_deg, double dec_deg);
+    QByteArray processFitsTile(const QString& fitsPath,
+                               double target_ra, double target_dec,
+                               double tile_center_ra, double tile_center_dec);
+    QByteArray write16BitRGBTiff(int w, int h,
+                                  const std::vector<float>& rCh,
+                                  const std::vector<float>& gCh,
+                                  const std::vector<float>& bCh);
 };
 
 #endif // DSSFITSMANAGER_H

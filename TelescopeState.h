@@ -167,10 +167,18 @@ public:
     double stretchBlackPoint = 0.0;
     double stretchWhitePoint = 1.0;
     
-    // Available directories for download (more realistic names)
+    // Filesystem path that backs the Astrophotography session listing. The
+    // real Origin stores each imaging session as a sub-directory here. The
+    // simulator scans this path live for GetListOfAvailableDirectories and
+    // serves files from these sub-dirs for any Astrophotography HTTP fetch,
+    // so real captured sessions become available to the App with no copying.
+    // Override via --astro-dir=PATH on the command line.
+    QString astroBaseDir = "/Volumes/X10Pro/Astrophotography";
+
+    // Legacy fallback list (used only if astroBaseDir doesn't exist).
     QStringList astrophotographyDirs = {
         "M31_Andromeda_Galaxy",
-        "M42_Orion_Nebula", 
+        "M42_Orion_Nebula",
         "M51_Whirlpool_Galaxy",
         "M81_Bodes_Galaxy",
         "M101_Pinwheel_Galaxy",

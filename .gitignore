@@ -11,3 +11,6 @@ Release/
 build/
 release/
 OriginSimulator.app/
+Makefile
+Makefile.Debug
+Makefile.Release
