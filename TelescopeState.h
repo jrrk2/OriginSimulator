@@ -28,6 +28,9 @@ public:
     // Camera data (exact real values from session1.pcapng)
     int binning = 1;
     int bitDepth = 24;
+    bool debayer = true;     // SetCaptureParameters Debayer; BitDepth 16 with Debayer false gives raw Bayer FITS snapshots
+    int frameCounter = 0;
+    double cloud = 0.0;      // 0 clear .. 1 opaque; dims the simulated stars (env ORIGIN_SIM_CLOUD overrides)
     double colorBBalance = 120.0;
     double colorGBalance = 58.0;
     double colorRBalance = 78.0;
@@ -206,6 +209,11 @@ public:
     }
     
     // Get next image filename (cycles through 0-9 like real telescope)
+    QString getNextFITSFile() {
+        imageCounter = (imageCounter + 1) % 10;
+        return QString("/tmp/Images_%1.fits").arg(imageCounter);
+    }
+
     QString getNextTIFFFile() {
         imageCounter = (imageCounter + 1) % 10;
         return QString("/tmp/Images_%1.tiff").arg(imageCounter);

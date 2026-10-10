@@ -18,6 +18,7 @@ SOURCES += \
     WebSocketConnection.cpp \
     CommandHandler.cpp \
     TiffImageGenerator.cpp \
+    FitsImageGenerator.cpp \
     StatusSender.cpp \
     ProperHipsClient.cpp \
     EnhancedMosaicCreator.cpp \
@@ -41,6 +42,7 @@ HEADERS += \
     WebSocketConnection.h \
     CommandHandler.h \
     TiffImageGenerator.h \
+    FitsImageGenerator.h \
     StatusSender.h \
     moc_predefs.h \
 

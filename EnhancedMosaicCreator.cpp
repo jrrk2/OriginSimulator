@@ -232,6 +232,8 @@ void EnhancedMosaicCreator::assembleFinalMosaicCentered() {
     if (false) qDebug() << QString("Step 3: Cropped to %1x%2 centered mosaic")
                 .arg(centeredMosaic.width()).arg(centeredMosaic.height());
     
+    m_cleanMosaic = centeredMosaic;     // without the crosshair and labels, for FITS frames built from the survey
+
     // Step 4: Add crosshairs and labels at the true center
     QPainter painter(&centeredMosaic);
     

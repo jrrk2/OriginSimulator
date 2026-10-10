@@ -13,6 +13,10 @@
 #include <cmath>
 #include "CelestronOriginSimulator.h"
 #include "TiffImageGenerator.h"
+#include "FitsImageGenerator.h"
+#include <vector>
+#include <algorithm>
+#include <cmath>
 #include <QApplication>
 #include <QJsonDocument>
 #include <QJsonObject>
@@ -39,6 +43,7 @@ CelestronOriginSimulator::CelestronOriginSimulator(QObject *parent) : QObject(pa
     // Initialize headless mosaic creator
     m_mosaicCreator = new EnhancedMosaicCreator(this); // Headless mode
     m_mosaicInProgress = false;
+    m_surveyFits = qEnvironmentVariable("ORIGIN_SIM_SURVEY", "0") != "0";
     
     // Connect mosaic completion signal
     connect(m_mosaicCreator, &EnhancedMosaicCreator::mosaicComplete, 
@@ -325,24 +330,81 @@ void CelestronOriginSimulator::updateSlew() {
 // =============================================================================
 
 
+// Survey luminance at the sensor plate scale for a FITS frame: linear, sky-subtracted, placed where the survey tiles fall for the current pointing.
+// Returns false when the mosaic is missing or does not overlap the frame.
+static bool buildSurveyPlane(const QImage& mosaic, double mosaicRaDeg, double mosaicDecDeg, double raDeg, double decDeg,
+                             std::vector<float>& plane, int footprint[4])
+{
+    const int W = FitsImageGenerator::WIDTH, H = FitsImageGenerator::HEIGHT;
+    if (mosaic.isNull()) return false;
+    const double scale = 1.61 / 1.478;                                            // mosaic arcsec/px over sensor arcsec/px
+    const QImage g = mosaic.convertToFormat(QImage::Format_Grayscale8).scaled(int(mosaic.width() * scale), int(mosaic.height() * scale), Qt::IgnoreAspectRatio, Qt::SmoothTransformation);
+    const double pxPerDeg = 3600.0 / 1.478;
+    // pointing east/north of where the mosaic was made moves the sky west (+x; east is left) / south (+y)
+    const int ox = int(std::lround((W - g.width()) / 2.0 + (raDeg - mosaicRaDeg) * std::cos(decDeg * M_PI / 180.0) * pxPerDeg));
+    const int oy = int(std::lround((H - g.height()) / 2.0 + (decDeg - mosaicDecDeg) * pxPerDeg));
+    const int x0 = std::max(0, ox), y0 = std::max(0, oy), x1 = std::min(W, ox + g.width()), y1 = std::min(H, oy + g.height());
+    if (x1 - x0 < 64 || y1 - y0 < 64) return false;
+    std::vector<float> lin; lin.reserve(size_t(x1 - x0) * (y1 - y0));
+    plane.assign(size_t(W) * H, 0.f);
+    for (int y = y0; y < y1; ++y) {
+        const uchar* line = g.constScanLine(y - oy);
+        for (int x = x0; x < x1; ++x) { const float v = std::pow(line[x - ox] / 255.0f, 2.2f); plane[size_t(y) * W + x] = v; lin.push_back(v); }
+    }
+    std::vector<float> sub; for (size_t i = 0; i < lin.size(); i += 7) sub.push_back(lin[i]);
+    std::nth_element(sub.begin(), sub.begin() + sub.size() / 2, sub.end());
+    const float bg = sub[sub.size() / 2];                                          // survey sky level: the simulator supplies its own sky
+    for (int y = y0; y < y1; ++y) for (int x = x0; x < x1; ++x) plane[size_t(y) * W + x] = std::max(0.f, plane[size_t(y) * W + x] - bg);
+    footprint[0] = x0; footprint[1] = y0; footprint[2] = x1; footprint[3] = y1;
+    return true;
+}
+
 void CelestronOriginSimulator::updateImaging() {
     if (m_telescopeState->isImaging) {
         m_telescopeState->imagingTimeLeft--;
         
+        if (m_telescopeState->imagingTimeLeft <= 0 && m_surveyFits && m_telescopeState->bitDepth == 16 && !m_telescopeState->debayer && m_surveyWaitTicks < 90) {
+            // survey mode: hold the frame until the HiPS mosaic for the current pointing has arrived (up to 90 s), so the image matches the sky
+            const double cosd = std::cos(m_telescopeState->dec);
+            const double dRa = (m_telescopeState->ra * 180.0 / M_PI - m_surveyRaDeg) * cosd, dDec = m_telescopeState->dec * 180.0 / M_PI - m_surveyDecDeg;
+            if (m_mosaicInProgress || m_surveyMosaic.isNull() || std::hypot(dRa, dDec) > 0.1) { m_telescopeState->imagingTimeLeft = 1; ++m_surveyWaitTicks; return; }
+        }
         if (m_telescopeState->imagingTimeLeft <= 0) {
+            m_surveyWaitTicks = 0;
             m_telescopeState->isImaging = false;
             m_imagingTimer->stop();
             
-            QString imagePath = m_telescopeState->getNextTIFFFile();
-            m_telescopeState->fileLocation = imagePath;
-            QString fullPath = m_absoluteTempDir + "/" + imagePath;
-            
-	    // No cached image data
-	    TiffImageGenerator::generateSyntheticStarField(fullPath, 150);
-	    qDebug() << "=== SAMPLE CAPTURE COMPLETE ===";
-	    qDebug() << "Generated synthetic star field (no cached image)";
-            
+            if (m_telescopeState->bitDepth == 16 && !m_telescopeState->debayer) {
+                // raw 16-bit Bayer FITS snapshot, as the current firmware delivers
+                const QString imagePath = m_telescopeState->getNextFITSFile();
+                m_telescopeState->fileLocation = imagePath;
+                m_telescopeState->imageType = "SAMPLE_CAPTURE";
+                const QString fullPath = m_absoluteTempDir + "/" + imagePath;
+                QDir().mkpath(QFileInfo(fullPath).absolutePath());
+                FitsImageGenerator::Params fp;
+                fp.raRad = m_telescopeState->ra; fp.decRad = m_telescopeState->dec;
+                fp.exposureS = m_telescopeState->exposure; fp.iso = m_telescopeState->iso;
+                fp.focuserPosition = m_telescopeState->position; fp.frameNumber = ++m_telescopeState->frameCounter; fp.cloud = qEnvironmentVariable("ORIGIN_SIM_CLOUD", QString::number(m_telescopeState->cloud)).toDouble();   // 0..1 test hook
+                std::vector<float> surveyPlane;
+                if (m_surveyFits && buildSurveyPlane(m_surveyMosaic, m_surveyRaDeg, m_surveyDecDeg, m_telescopeState->ra * 180.0 / M_PI, m_telescopeState->dec * 180.0 / M_PI, surveyPlane, fp.surveyFootprint))
+                { fp.survey = &surveyPlane; fp.stars = 1500; }       // denser synthetic fill outside the survey tiles, closer to the survey's own star density
+                else if (m_surveyFits) qDebug() << "survey mosaic unavailable for this pointing: synthetic stars only";
+                QFile f(fullPath);
+                if (f.open(QIODevice::WriteOnly)) { f.write(FitsImageGenerator::generate(fp)); f.close(); }
+                qDebug() << "=== SAMPLE CAPTURE COMPLETE === FITS" << fullPath << "focuser" << fp.focuserPosition;
+            } else {
+                QString imagePath = m_telescopeState->getNextTIFFFile();
+                m_telescopeState->fileLocation = imagePath;
+                QString fullPath = m_absoluteTempDir + "/" + imagePath;
+
+                // No cached image data
+                TiffImageGenerator::generateSyntheticStarField(fullPath, 150);
+                qDebug() << "=== SAMPLE CAPTURE COMPLETE ===";
+                qDebug() << "Generated synthetic star field (no cached image)";
+            }
+
             m_statusSender->sendNewImageReadyToAll();
+            m_telescopeState->imageType = "LIVE";       // only this notification is a snapshot; the live-view stream that follows is not
             m_commandHandler->completeImaging();
         }
     }
@@ -652,7 +714,18 @@ void CelestronOriginSimulator::handleHttpAstroImageRequest(QTcpSocket *socket, c
     // Extract just the requested filename
     QString fileName = QFileInfo(normalizedPath).fileName();
 
-    // Always serve the pre-generated 16-bit TIFF instead
+    // FITS snapshots are served as generated; everything else keeps the pre-generated 16-bit TIFF
+    if (fileName.endsWith(".fits", Qt::CaseInsensitive)) {
+        QFile fits(m_absoluteTempDir + "/" + m_telescopeState->fileLocation);
+        if (m_telescopeState->fileLocation.endsWith(fileName) && fits.open(QIODevice::ReadOnly)) {
+            const QByteArray bytes = fits.readAll();
+            qDebug() << "Serving image/fits from" << fits.fileName() << bytes.size() << "bytes";
+            sendHttpResponse(socket, 200, "image/fits", bytes);
+            return;
+        }
+        sendHttpResponse(socket, 404, "text/plain", "Image not found");
+        return;
+    }
     QString fullPath = "/tmp/temp_hips_image.tiff";
 
     // If the TIFF doesn't exist, fall back to regular search
@@ -897,6 +970,7 @@ void CelestronOriginSimulator::generateCurrentSkyImage() {
     double dec_rad = m_telescopeState->dec;
     double ra_deg = ra_rad * 180.0 / M_PI;
     double dec_deg = dec_rad * 180.0 / M_PI;
+    m_pendingRaDeg = ra_deg; m_pendingDecDeg = dec_deg;
     
     if (false) qDebug() << QString("Generating enhanced mosaic for RA=%1°, Dec=%2°")
                 .arg(ra_deg, 0, 'f', 6)
@@ -970,6 +1044,7 @@ void CelestronOriginSimulator::onMosaicComplete(const QImage& mosaic) {
     }
     
     if (true) qDebug() << QString("Received mosaic: %1x%2 pixels").arg(mosaic.width()).arg(mosaic.height());
+    m_surveyMosaic = m_mosaicCreator->cleanMosaic().isNull() ? mosaic : m_mosaicCreator->cleanMosaic(); m_surveyRaDeg = m_pendingRaDeg; m_surveyDecDeg = m_pendingDecDeg;
     QImage fullImage = mosaic.scaled(3056, 2048, Qt::KeepAspectRatio, Qt::SmoothTransformation);
     QImage paddedImage(3056, 2048, QImage::Format_RGB888);
     paddedImage.fill(Qt::black);

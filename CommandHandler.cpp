@@ -42,7 +42,7 @@ void CommandHandler::processCommand(const QJsonObject &obj, WebSocketConnection 
         handleRunSampleCapture(obj, wsConn, sequenceId, source, destination);
     } else if (command == "CancelImaging") {
         handleCancelImaging(obj, wsConn, sequenceId, source, destination);
-    } else if (command == "MoveToPosition" && destination == "Focuser") {
+    } else if ((command == "MoveToPosition" || command == "MoveTo") && destination == "Focuser") {
         handleMoveToPosition(obj, wsConn, sequenceId, source, destination);
     } else if (command == "GetListOfAvailableDirectories" && destination == "ImageServer") {
         handleGetDirectoryList(obj, wsConn, sequenceId, source, destination);
@@ -422,11 +422,12 @@ void CommandHandler::handleCancelImaging(const QJsonObject &obj, WebSocketConnec
 }
 
 void CommandHandler::handleMoveToPosition(const QJsonObject &obj, WebSocketConnection *wsConn, int sequenceId, const QString &source, const QString &destination) {
-    int targetPosition = obj["Position"].toInt();
+    // the real telescope's command is MoveTo with "Value"; MoveToPosition/"Position" is kept for older clients
+    int targetPosition = obj.contains("Value") ? obj["Value"].toInt() : obj["Position"].toInt();
     m_telescopeState->position = targetPosition;
     
     QJsonObject response;
-    response["Command"] = "MoveToPosition";
+    response["Command"] = obj["Command"].toString("MoveToPosition");
     response["Destination"] = source;
     response["ErrorCode"] = 0;
     response["ErrorMessage"] = "";
@@ -487,6 +488,8 @@ void CommandHandler::handleSetCaptureParameters(const QJsonObject &obj, WebSocke
     if (obj.contains("ISO")) m_telescopeState->iso = obj["ISO"].toInt();
     if (obj.contains("Binning")) m_telescopeState->binning = obj["Binning"].toInt();
     if (obj.contains("Offset")) m_telescopeState->offset = obj["Offset"].toInt();
+    if (obj.contains("BitDepth")) m_telescopeState->bitDepth = obj["BitDepth"].toInt();
+    if (obj.contains("Debayer")) m_telescopeState->debayer = obj["Debayer"].toBool();
     if (obj.contains("ColorRBalance")) m_telescopeState->colorRBalance = obj["ColorRBalance"].toDouble();
     if (obj.contains("ColorGBalance")) m_telescopeState->colorGBalance = obj["ColorGBalance"].toDouble();
     if (obj.contains("ColorBBalance")) m_telescopeState->colorBBalance = obj["ColorBBalance"].toDouble();
@@ -802,6 +805,7 @@ void CommandHandler::handleRunSampleCapture(const QJsonObject &obj, WebSocketCon
     // Extract exposure parameters
     double exposureTime = obj["ExposureTime"].toDouble();
     int iso = obj["ISO"].toInt();
+    m_telescopeState->debayer = obj["Debayer"].toBool(false);   // current firmware (1.5.x) defaults to the raw Bayer frame when absent
     
     qDebug() << "RunSampleCapture: Exposure=" << exposureTime << "ISO=" << iso;
     

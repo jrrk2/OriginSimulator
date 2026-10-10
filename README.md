@@ -169,3 +169,12 @@ The simulator has been tested with:
 - Configuration file support
 - Logging and debugging features
 - Additional image formats and metadata
+
+## Raw FITS snapshots (Origin firmware 1.5.x)
+
+When a client sets `BitDepth` 16 and runs `RunSampleCapture` with `Debayer` false (or absent, as on current firmware), the simulator serves a raw 16-bit Bayer FITS
+instead of a TIFF: 3056 x 2048, `BITPIX` 16 / `BZERO` 32768, black level about 4985 ADU, GRBG layout, `ImageType` `SAMPLE_CAPTURE`, file `/tmp/Images_N.fits`
+(`FitsImageGenerator`). The star field depends on the pointing (same stars for the same target, shifted by the real offset, plus a small dither), star size depends on the
+focuser position (best focus at 18900, so a focus sweep shows a V-curve), and brightness follows exposure x ISO. Set `ORIGIN_SIM_CLOUD=0..1` to dim the stars.
+`MoveTo` (with `Value`) on the Focuser is accepted as well as `MoveToPosition`. The simulator listens on port 80 (`SERVER_PORT`); on Linux use a high port and tell the
+client, e.g. `OriginHeadless serve --connect 127.0.0.1 --telescope-port 8080`.

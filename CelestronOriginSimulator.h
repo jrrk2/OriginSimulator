@@ -2,6 +2,7 @@
 #define CELESTRONORIGINSIMULATOR_H
 
 #include <QObject>
+#include <QImage>
 #include <QTcpServer>
 #include <QTcpSocket>
 #include <QUdpSocket>
@@ -60,6 +61,11 @@ private:
     StatusSender *m_statusSender;
     ProperHipsClient* m_hipsClient;  // Changed from m_rubinClient
     QByteArray m_imageData;
+    // --survey: FITS snapshots built from the HiPS survey mosaic (QImage, 1.61 arcsec/px, centred on m_surveyRaDeg/m_surveyDecDeg) instead of synthetic stars only
+    bool m_surveyFits = false;
+    QImage m_surveyMosaic;
+    double m_surveyRaDeg = 0, m_surveyDecDeg = 0, m_pendingRaDeg = 0, m_pendingDecDeg = 0;
+    int m_surveyWaitTicks = 0;
 
     // WebSocket management
     QList<WebSocketConnection*> m_webSocketClients;

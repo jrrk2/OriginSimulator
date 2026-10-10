@@ -3,6 +3,8 @@
 #include "CelestronOriginSimulator.h"
 
 int main(int argc, char *argv[]) {
+    for (int i = 1; i < argc; ++i)
+        if (QString(argv[i]) == "--survey") qputenv("ORIGIN_SIM_SURVEY", "1");   // FITS snapshots from the HiPS survey image (needs network)
     QApplication app(argc, argv);
     
     CelestronOriginSimulator simulator;

@@ -173,6 +173,7 @@ void StatusSender::sendNewImageReady(WebSocketConnection *specificClient) {
     newImage["Source"] = "ImageServer";
     newImage["ImageType"] = m_telescopeState->imageType;
     newImage["FileLocation"] = m_telescopeState->fileLocation;
+    newImage["ExposureTime"] = m_telescopeState->exposure;
     newImage["ExpiredAt"] = m_telescopeState->getExpiredAt();
     newImage["SequenceID"] = m_telescopeState->getNextSequenceId();
     newImage["Type"] = "Notification";
