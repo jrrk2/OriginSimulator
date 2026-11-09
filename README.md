@@ -202,7 +202,7 @@ client, e.g. `OriginHeadless serve --connect 127.0.0.1 --telescope-port 8080`.
   30 s after a slew the stars are oval. The FITS header and `NewImageReady` carry the firmware's idea of the pointing, never the truth.
 
 Other settings: `ORIGIN_SIM_PORT` (default 80), `ORIGIN_SIM_BROADCAST=0` (no discovery broadcast, when a real telescope is on the network),
-`ORIGIN_SIM_START_READY=0` (start uninitialised), `ORIGIN_SIM_START="enc0,enc1"`, `ORIGIN_SIM_TILT="deg,toward"`, `ORIGIN_SIM_AZ_ZERO`, `ORIGIN_SIM_ALT_ZERO`,
+`ORIGIN_SIM_START_READY=1` (start as after a real initialisation; by default it starts uninitialised), `ORIGIN_SIM_START="enc0,enc1"`, `ORIGIN_SIM_TILT="deg,toward"`, `ORIGIN_SIM_AZ_ZERO`, `ORIGIN_SIM_ALT_ZERO`,
 `ORIGIN_SIM_FLEXURE`, `ORIGIN_SIM_CONE` (arcmin), `ORIGIN_SIM_PE="az,alt"` (arcsec), `ORIGIN_SIM_WORM_TEETH` (a placeholder: the Origin's is not known),
 `ORIGIN_SIM_REFRACTION=0`, `ORIGIN_SIM_SETTLE` (seconds), `ORIGIN_SIM_INIT_TICK_MS`, `ORIGIN_SIM_INIT_FAIL` (percent), `ORIGIN_SIM_GAIA` (a catalogue file, a
 Cartes du Ciel folder, or `none`).

@@ -145,8 +145,9 @@ public:
   }
     TelescopeState() {
         syncTracking();
-        // ORIGIN_SIM_START_READY=0 starts uninitialised, as after a reboot with the automatic initialisation off; otherwise as after a real initialisation
-        if (qEnvironmentVariable("ORIGIN_SIM_START_READY", "1") != "0") {
+        // Starts uninitialised, so that a client has to initialise it (PI.N.S.'s Unpark); ORIGIN_SIM_START_READY=1 starts as after a real initialisation, as the
+        // real telescope is when its own automatic initialisation after a reboot has succeeded
+        if (qEnvironmentVariable("ORIGIN_SIM_START_READY", "0") == "1") {
             mount.initialise(false, julianDateNow());
             isReady = true; state = "IDLE"; stage = "COMPLETE"; isAligned = true; numAlignRefs = 2;
         } else {
