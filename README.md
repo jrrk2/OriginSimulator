@@ -192,10 +192,10 @@ client, e.g. `OriginHeadless serve --connect 127.0.0.1 --telescope-port 8080`.
 - **The firmware's frame.** After an initialisation the firmware reports `Alt`/`Azm` = encoders plus constant offsets (a level-base model) and `Ra`/`Dec` in J2000.
   A fake initialisation (`RunInitialize` with `FakeInitialize`) declares the current pointing to be azimuth 180 at the tilt sensor's altitude; a real one finds
   the true pointing, fails with -53 if the live stream is disabled, and refuses a second with -73. `GotoRaDec` and `TrackMovingTarget` answer -5 until the
-  firmware is ready, turn the azimuth the short way round (as the firmware does), and track after arriving; `HaltTasks` stops them. `Slew` works at any time,
+  firmware is ready, turn the azimuth the short way round (as the firmware does), and track after arriving; `HaltTasks` stops them (`StopTracking` is unknown). `Slew` works at any time,
   at the measured speeds (rate 9 about 4 deg/s); zero rates leave a goto or track running.
-- **Cables.** The running count of azimuth from cable-neutral (`ORIGIN_SIM_CABLE_NEUTRAL`, default the start). Past 180 degrees the log warns `CORD WRAP`; past
-  `ORIGIN_SIM_CORD_BREAK` (270) the cord snaps and from then on the azimuth clutch slips. `GET /sim/slip?degrees=x` simulates a knock.
+- **Cables.** The running count of azimuth from cable-neutral (`ORIGIN_SIM_CABLE_NEUTRAL`, default the start). Past 180 degrees the log warns `CORD WRAP`, and
+  `/sim/state` counts each time (`cord.times_taut`) and keeps the furthest each way. `GET /sim/slip?degrees=x` simulates a knock.
 - **The sky in the frames.** Real stars from Gaia DR3 (see `data/README.md`), each refracted at its own altitude (Saemundsson, `ORIGIN_SIM_PRESSURE`,
   `ORIGIN_SIM_TEMPERATURE`), in the gnomonic projection onto the plane square to the tube, with the camera's orientation as the mount carries it. Each frame
   integrates the mount through the exposure, so a tracked field rotates about its centre (fastest near the zenith) and a still mount lets the stars trail; for

@@ -19,8 +19,7 @@
  *    RA/Dec are J2000.
  *  - Motion. Slew rates move the encoders at the measured speeds (rate 9 about 4 deg/s). Firmware gotos and tracks drive the azimuth the shortest way
  *    round, as the firmware does, so only the host can keep the cables safe.
- *  - Cables. The running count of azimuth from cable-neutral: past 180 the cables are taut; past the break limit the power cord snaps, and from then on
- *    the azimuth clutch slips (the sky turns less than the encoder says), as happened on 2026-11-08.
+ *  - Cables. The running count of azimuth from cable-neutral: past 180 the cables are taut, and the log says so (cord-wrap detection).
  *  - Tilt sensor: the true altitude plus 1.15 degrees.
  *  - Periodic error: between each encoder and its axis, a sinusoid in phase with the worm (period 360/teeth degrees of axis), with a second harmonic.
  *  - Cone error: the optical axis not square to the altitude axis, a sideways offset C at every altitude (b = (cos C cos E, sin C, cos C sin E) before azimuth).
@@ -40,8 +39,7 @@ public:
         double tiltSensorBiasDeg = 1.15;
         double startEnc0Deg = 0.0, startEnc1Deg = 0.0;
         double cableNeutralEnc0Deg = 0.0;
-        double cordTautDeg = 180.0, cordBreakDeg = 270.0;
-        double slipRatio = 0.65;                      // once the clutch slips: true azimuth motion per encoder degree
+        double cordTautDeg = 180.0;
         double peAzArcsec = 15, peAltArcsec = 15;     // periodic error amplitudes (first harmonic; the second is 30 % of it)
         double pePhaseAzDeg = 0, pePhaseAltDeg = 0, pe2PhaseAzDeg = 0, pe2PhaseAltDeg = 0;
         double wormTeeth = 144;                       // placeholder: the Origin's worm is not known; ORIGIN_SIM_WORM_TEETH
@@ -70,7 +68,7 @@ public:
     bool track(const std::vector<TrackPoint>& points);
     void halt();
     void initialise(bool fake, double jd);             // sets the firmware frame from here
-    void slipAzimuth(double degrees);                  // a knock or a slipping clutch: the sky turns, the encoder does not
+    void slipAzimuth(double degrees);                  // a knock: the sky turns, the encoder does not
 
     // readings
     double enc0Deg() const;                           // wrapped to [-180, 180), as reported
@@ -80,7 +78,6 @@ public:
     bool isFakeInitialised() const { return m_fake; }
     bool isGotoOver() const { return m_mode != Mode::Goto; }
     bool isTracking() const { return m_mode == Mode::Track; }
-    bool cordSnapped() const { return m_snapped; }
     void trueAltAz(double& altDeg, double& azDeg) const;
     void trueJ2000(double jd, double& raRad, double& decRad) const;
     // the frame: the tube's direction on the apparent sky and the image's up and right there (horizon frame: x north, y east, z up)
@@ -102,7 +99,7 @@ private:
     double m_q[4];                                    // truth rotation, unit quaternion (w, x, y, z)
     double m_lat, m_lon;
     double m_enc0, m_enc1;                            // degrees; Enc0 unwrapped (it is the cable count plus neutral)
-    double m_skyAzSlip = 0;                           // degrees the sky has turned less than the encoder (clutch slip, knocks)
+    double m_skyAzSlip = 0;                           // degrees the sky has turned less than the encoder (knocks)
     int m_altRate = 0, m_azmRate = 0;
     Mode m_mode = Mode::Idle;
     double m_gotoEnc0 = 0, m_gotoEnc1 = 0, m_gotoRa = 0, m_gotoDec = 0;
@@ -110,7 +107,7 @@ private:
     bool m_initialised = false, m_fake = false;
     double m_altOffset = 0, m_azOffset = 0;
     double m_maxTurned = 0, m_minTurned = 0;
-    bool m_taut = false, m_snapped = false;
+    bool m_taut = false;
     int m_tautCount = 0;
     QStringList m_events;
 

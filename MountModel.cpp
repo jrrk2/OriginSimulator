@@ -127,8 +127,6 @@ MountModel::Config MountModel::Config::fromEnvironment()
     c.tiltSensorBiasDeg = envD("ORIGIN_SIM_TILT_SENSOR_BIAS", c.tiltSensorBiasDeg);
     envPair("ORIGIN_SIM_START", c.startEnc0Deg, c.startEnc1Deg);           // "enc0,enc1" degrees
     c.cableNeutralEnc0Deg = envD("ORIGIN_SIM_CABLE_NEUTRAL", c.startEnc0Deg);
-    c.cordBreakDeg = envD("ORIGIN_SIM_CORD_BREAK", c.cordBreakDeg);
-    c.slipRatio = envD("ORIGIN_SIM_SLIP_RATIO", c.slipRatio);
     return c;
 }
 
@@ -315,7 +313,6 @@ void MountModel::slipAzimuth(double degrees)
 void MountModel::moveEnc0(double delta)
 {
     m_enc0 += delta;
-    if (m_snapped) m_skyAzSlip += (1.0 - m_cfg.slipRatio) * delta;        // the clutch slips: the sky turns less than the encoder
     const double t = turnedDeg();
     m_maxTurned = std::max(m_maxTurned, t);
     m_minTurned = std::min(m_minTurned, t);
@@ -325,10 +322,6 @@ void MountModel::moveEnc0(double delta)
     } else if (std::fabs(t) < m_cfg.cordTautDeg - 5 && m_taut) {
         m_taut = false;
         m_events << QString("cord slack again at %1 degrees").arg(t, 0, 'f', 1);
-    }
-    if (std::fabs(t) > m_cfg.cordBreakDeg && !m_snapped) {
-        m_snapped = true;
-        m_events << QString("CORD SNAPPED at %1 degrees from cable-neutral: external power lost, the azimuth clutch now slips (ratio %2)").arg(t, 0, 'f', 1).arg(m_cfg.slipRatio);
     }
 }
 
@@ -404,7 +397,7 @@ QJsonObject MountModel::state(double jd) const
     firmwareAltAz(falt, faz);
     static const char* modes[] = { "IDLE", "MANUAL", "GOTO", "TRACK" };
     QJsonObject cord{ { "neutral_enc0_deg", m_cfg.cableNeutralEnc0Deg }, { "turned_deg", turnedDeg() }, { "max_turned_deg", m_maxTurned }, { "min_turned_deg", m_minTurned },
-                      { "taut_limit_deg", m_cfg.cordTautDeg }, { "break_limit_deg", m_cfg.cordBreakDeg }, { "taut", m_taut }, { "times_taut", m_tautCount }, { "snapped", m_snapped } };
+                      { "taut_limit_deg", m_cfg.cordTautDeg }, { "taut", m_taut }, { "times_taut", m_tautCount } };
     QJsonObject firmware{ { "initialised", m_initialised }, { "fake", m_fake }, { "alt_deg", falt }, { "az_deg", faz } };
     return QJsonObject{
         { "enc0_deg", enc0Deg() }, { "enc0_unwrapped_deg", m_enc0 }, { "enc1_deg", m_enc1 }, { "mode", modes[int(m_mode)] }, { "tilt_sensor_deg", tiltSensorDeg() },

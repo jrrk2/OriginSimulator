@@ -1200,7 +1200,7 @@ void CelestronOriginSimulator::handleSimRequest(QTcpSocket *socket, const QStrin
     const QUrl url(path);
     const double jd = TelescopeState::julianDateNow();
     if (url.path() == "/sim/slip") {
-        // a knock, or the clutch slipping: the sky turns, the encoder does not
+        // a knock: the sky turns, the encoder does not
         m_telescopeState->mount.slipAzimuth(QUrlQuery(url).queryItemValue("degrees").toDouble());
     } else if (url.path() == "/sim/truth") {
         sendHttpResponse(socket, 200, "application/json", QJsonDocument(m_telescopeState->mount.truth(jd)).toJson(QJsonDocument::Compact));
