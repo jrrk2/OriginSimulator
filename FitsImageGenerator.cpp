@@ -85,11 +85,12 @@ QByteArray FitsImageGenerator::generate(const Params& p)
     const bool real = p.catalogue != nullptr;
     const int nStars = real ? int(p.catalogue->size()) : nCat;
     for (int i = 0; i < nStars; ++i) {
-        double sx, sy, flux;
+        double sx, sy, flux, share = 1.0;
         if (real) {
             const auto& s = (*p.catalogue)[size_t(i)];
             sx = s.x + dx - offX; sy = s.y + dy - offY;                                   // the dither only: the positions are for this pointing already
             flux = 600.0 * expo * clear * std::pow(10.0, -0.4 * (s.g - 12.0)) * s.weight;
+            share = std::max(1e-6, s.weight);                                             // this moment's share of the exposure
         } else {
             sx = cat.uniform() * (W + 2 * margin) - margin + dx; sy = cat.uniform() * (H + 2 * margin) - margin + dy;
             const double mag = 6.0 * std::pow(cat.uniform(), 0.7);                       // 0 (brightest) .. 6 magnitudes fainter
@@ -101,12 +102,30 @@ QByteArray FitsImageGenerator::generate(const Params& p)
         const double sMaj = sigma * std::max(1.0, p.elongation), sMin = sigma;
         const double ct = std::cos(p.elongationAngleDeg * M_PI / 180.0), st = -std::sin(p.elongationAngleDeg * M_PI / 180.0);
         const double amp = flux / (2.0 * M_PI * sMaj * sMin);
-        const int R = std::min(60, int(std::ceil(4.0 * sMaj)));
+        // out to where the star falls below 1 ADU, at least 4 sigma: a fixed 4 sigma cut a magnitude-0 star off square at 700 ADU
+        const int R = std::min(60, int(std::ceil(sMaj * std::max(4.0, std::sqrt(2.0 * std::log(std::max(1.0, amp)))))));
         for (int y = std::max(0, int(sy) - R); y <= std::min(H - 1, int(sy) + R); ++y)
             for (int x = std::max(0, int(sx) - R); x <= std::min(W - 1, int(sx) + R); ++x) {
                 const double u = (x - sx) * ct + (y - sy) * st, v = -(x - sx) * st + (y - sy) * ct;
                 img[size_t(y) * W + x] += float(amp * gain(x, y) * std::exp(-(u * u) / (2 * sMaj * sMaj) - (v * v) / (2 * sMin * sMin)));
             }
+        // a star that saturates gets a cross of four spikes along the image's axes, so the brightest stars stand out as they do by eye.
+        // Not the Origin's optics (its camera at the front has no spider vanes): a marker, 0.3% of the peak, falling as the distance (as a
+        // diffraction spike does), out to where it fades to 10 ADU. Judged on the whole star: each moment of the exposure draws its share.
+        if (amp / share > 65535.0) {
+            const double peak = 0.003 * amp / share, r0 = 2.0 * sigma;
+            const int length = std::min(900, int(r0 * (peak / 10.0 - 1.0)));
+            for (int r = R / 2; r <= length; ++r) {
+                const double level = share * peak / (1.0 + r / r0);
+                for (int side = -1; side <= 1; ++side) {                                    // a spike about 2 px wide
+                    const double across = std::exp(-side * side / (2 * 0.8 * 0.8));
+                    const int pts[4][2] = { { int(std::lround(sx)) + r, int(std::lround(sy)) + side }, { int(std::lround(sx)) - r, int(std::lround(sy)) + side },
+                                            { int(std::lround(sx)) + side, int(std::lround(sy)) + r }, { int(std::lround(sx)) + side, int(std::lround(sy)) - r } };
+                    for (const auto& q : pts)
+                        if (q[0] >= 0 && q[0] < W && q[1] >= 0 && q[1] < H) img[size_t(q[1]) * W + q[0]] += float(level * across * gain(q[0], q[1]));
+                }
+            }
+        }
     }
 
     // noise (read noise 8 ADU plus shot noise on the signal above black), then quantise to unsigned 16 bit

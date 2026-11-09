@@ -1212,5 +1212,6 @@ void CelestronOriginSimulator::handleSimRequest(QTcpSocket *socket, const QStrin
     state["ready"] = m_telescopeState->isReady;
     state["live_stream_disabled"] = m_telescopeState->liveStreamDisabled;
     state["gaia_stars"] = double(GaiaSky::instance().count());
+    state["bright_stars_added"] = double(GaiaSky::instance().brightAdded());
     sendHttpResponse(socket, 200, "application/json", QJsonDocument(state).toJson(QJsonDocument::Compact));
 }

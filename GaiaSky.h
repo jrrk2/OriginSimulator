@@ -1,7 +1,10 @@
 #ifndef GAIASKY_H
 #define GAIASKY_H
 
+#include <QByteArray>
 #include <QString>
+
+#include <cstdint>
 #include <vector>
 
 /**
@@ -15,6 +18,9 @@
  *  - the Gaia DR3 catalogue as Cartes du Ciel installs it (~/.skychart/catalog/gaia/gaia1, G to 12): 7.5-degree zone folders of gaiaNNN.dat files,
  *    fixed 38-byte records (little-endian: RA int32 milliarcseconds, Dec int32 milliarcseconds + 90 degrees, source id int64, G, BP, RP int16
  *    millimagnitudes, ...), as gaia.hdr describes them.
+ * Then the bright stars Gaia lacks (it saturates on them: nothing brighter than about G 1.7, with gaps to about G 3, so no Vega, Sirius or Capella),
+ * from data/hipparcos_v6.bin: Hipparcos stars to V 6 (ESA 1997) at Gaia's epoch with a G from V and B-V, written by OriginSimulator
+ * --fetch-hipparcos (GaiaFetch). A Hipparcos star is added unless the Gaia catalogue has a star within 3 arcseconds and 1 magnitude of it.
  * The stars are kept in a one-degree grid for quick cone searches.
  */
 class GaiaSky {
@@ -26,6 +32,7 @@ public:
 
     bool available() const { return m_count > 0; }
     size_t count() const { return m_count; }
+    size_t brightAdded() const { return m_bright; }
     QString source() const { return m_dir; }
 
     // stars within radiusDeg of (raDeg, decDeg), brighter than gMax
@@ -35,9 +42,12 @@ private:
     GaiaSky();
     void load(const QString& dir);
     bool loadFile(const QString& file);
+    static QByteArray readCatalogue(const QString& file, const char* magic, uint32_t& count);
+    void addBright();
     void add(double raDeg, double decDeg, double g);
     std::vector<std::vector<Star>> m_cells;          // 180 dec bands x 360 ra bins
     size_t m_count = 0;
+    size_t m_bright = 0;
     QString m_dir;
 };
 

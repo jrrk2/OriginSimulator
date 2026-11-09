@@ -14,6 +14,7 @@
 #include <QUrl>
 #include <QUrlQuery>
 
+#include <algorithm>
 #include <cmath>
 #include <cstdint>
 #include <vector>
@@ -81,6 +82,28 @@ bool query(QNetworkAccessManager& net, const QString& adql, QByteArray& csv)
     return csv.startsWith("ra,dec,phot_g_mean_mag");
 }
 
+bool writeCatalogue(const QString& outputFile, const char magic[8], const std::vector<Star>& stars)
+{
+    QDir().mkpath(QFileInfo(outputFile).absolutePath());
+    QFile out(outputFile);
+    if (!out.open(QIODevice::WriteOnly)) {
+        qCritical() << "GaiaFetch: cannot write" << outputFile;
+        return false;
+    }
+    const uint32_t count = uint32_t(stars.size()), format = 1;
+    out.write(magic, 8);
+    out.write(reinterpret_cast<const char*>(&count), 4);
+    out.write(reinterpret_cast<const char*>(&format), 4);
+    for (const Star& s : stars) {
+        out.write(reinterpret_cast<const char*>(&s.ra), 4);
+        out.write(reinterpret_cast<const char*>(&s.dec), 4);
+        out.write(reinterpret_cast<const char*>(&s.g), 2);
+    }
+    out.close();
+    qInfo() << "GaiaFetch:" << count << "stars written to" << outputFile;
+    return true;
+}
+
 }   // namespace
 
 int GaiaFetch::run(const QString& outputFile)
@@ -115,22 +138,49 @@ int GaiaFetch::run(const QString& outputFile)
         }
         qInfo() << "GaiaFetch: declinations" << d0 << "to" << d1 << ":" << n << "stars";
     }
-    QDir().mkpath(QFileInfo(outputFile).absolutePath());
-    QFile out(outputFile);
-    if (!out.open(QIODevice::WriteOnly)) {
-        qCritical() << "GaiaFetch: cannot write" << outputFile;
+    return writeCatalogue(outputFile, "GAIADR3G", stars) ? 0 : 1;
+}
+
+int GaiaFetch::runHipparcos(const QString& outputFile)
+{
+    // ESA's archive (the same as Gaia's) holds the Hipparcos catalogue as public.hipparcos; under 5000 rows, so one synchronous query
+    QNetworkAccessManager net;
+    QNetworkRequest r{ QUrl("https://gea.esac.esa.int/tap-server/tap/sync") };
+    r.setHeader(QNetworkRequest::ContentTypeHeader, "application/x-www-form-urlencoded");
+    r.setAttribute(QNetworkRequest::RedirectPolicyAttribute, QNetworkRequest::NoLessSafeRedirectPolicy);
+    QUrlQuery form;
+    form.addQueryItem("REQUEST", "doQuery");
+    form.addQueryItem("LANG", "ADQL");
+    form.addQueryItem("FORMAT", "csv");
+    form.addQueryItem("QUERY", "SELECT hip, ra, de, pmra, pmde, vmag, b_v FROM public.hipparcos WHERE vmag < 6");
+    const QByteArray body = form.toString(QUrl::FullyEncoded).toUtf8();
+    QByteArray csv;
+    for (int attempt = 0; attempt < 3 && !csv.startsWith("hip,ra,de,"); ++attempt) {
+        if (attempt) QThread::sleep(10);
+        csv = send(net, r, &body, nullptr, 180000);
+    }
+    constexpr double years = 2016.0 - 1991.25;           // Hipparcos' epoch to Gaia DR3's
+    std::vector<Star> stars;
+    for (const QByteArray& line : csv.split('\n')) {
+        const QList<QByteArray> f = line.trimmed().split(',');
+        if (f.size() != 7 || f[0] == "hip") continue;
+        bool ok[5] = {};
+        const double ra = f[1].trimmed().toDouble(&ok[0]), dec = f[2].trimmed().toDouble(&ok[1]), v = f[5].trimmed().toDouble(&ok[2]);
+        if (!ok[0] || !ok[1] || !ok[2]) continue;           // the few stars without a position
+        double pmRa = f[3].trimmed().toDouble(&ok[3]), pmDec = f[4].trimmed().toDouble(&ok[4]);
+        if (!ok[3] || !ok[4]) pmRa = pmDec = 0;
+        bool hasBv = false;
+        const double bv = f[6].trimmed().toDouble(&hasBv);
+        const double g = hasBv ? v - 0.02704 + 0.01424 * bv - 0.2156 * bv * bv + 0.01426 * bv * bv * bv : v;
+        // pmRA is mu_alpha* (already times cos dec), in milliarcseconds a year
+        const double d = std::clamp(dec + pmDec * years / 3.6e6, -90.0, 90.0);
+        double a = ra + pmRa * years / 3.6e6 / std::max(1e-6, std::cos(dec * M_PI / 180.0));
+        a = std::fmod(std::fmod(a, 360.0) + 360.0, 360.0);
+        stars.push_back({ int32_t(std::llround(a * 3.6e6) % 1296000000LL), int32_t(std::llround(d * 3.6e6)), int16_t(std::lround(g * 1000)) });
+    }
+    if (stars.size() < 4000) {
+        qCritical() << "GaiaFetch: only" << stars.size() << "Hipparcos stars brighter than V 6 (there are about 5000)";
         return 1;
     }
-    const uint32_t count = uint32_t(stars.size()), format = 1;
-    out.write("GAIADR3G", 8);
-    out.write(reinterpret_cast<const char*>(&count), 4);
-    out.write(reinterpret_cast<const char*>(&format), 4);
-    for (const Star& s : stars) {
-        out.write(reinterpret_cast<const char*>(&s.ra), 4);
-        out.write(reinterpret_cast<const char*>(&s.dec), 4);
-        out.write(reinterpret_cast<const char*>(&s.g), 2);
-    }
-    out.close();
-    qInfo() << "GaiaFetch:" << count << "stars written to" << outputFile;
-    return 0;
+    return writeCatalogue(outputFile, "HIPPARCO", stars) ? 0 : 1;
 }

@@ -12,6 +12,9 @@ int main(int argc, char *argv[]) {
         if (QString(argv[i]) == "--fetch-gaia") {
             QCoreApplication fetch(argc, argv);
             return GaiaFetch::run(QString(argv[i + 1]));
+        } else if (QString(argv[i]) == "--fetch-hipparcos") {       // the bright stars Gaia lacks, from Hipparcos in ESA's archive
+            QCoreApplication fetch(argc, argv);
+            return GaiaFetch::runHipparcos(QString(argv[i + 1]));
         }
     for (int i = 1; i < argc; ++i)
         if (QString(argv[i]) == "--survey") qputenv("ORIGIN_SIM_SURVEY", "1");   // FITS snapshots from the HiPS survey image (needs network)
