@@ -7,6 +7,7 @@
 #include <QTcpSocket>
 #include <QUdpSocket>
 #include <QTimer>
+#include <QElapsedTimer>
 #include <QMap>
 #include <QList>
 
@@ -19,7 +20,7 @@
 
 // Constants
 const QString SERVER_NAME = "CelestronOriginSimulator";
-const int SERVER_PORT = 80;
+const int SERVER_PORT = 80;          // ORIGIN_SIM_PORT overrides, so that tests can run beside a real telescope
 const int BROADCAST_PORT = 55555;
 const int BROADCAST_INTERVAL = 5000; // milliseconds
 
@@ -78,6 +79,12 @@ private:
     QTimer *m_imagingTimer;
     QTimer *m_connectionHealthTimer;
     QTimer *m_initTimer;
+    QTimer *m_mountTimer;               // moves the mount model, 10 times a second
+    QElapsedTimer m_mountClock;
+    std::vector<std::pair<double, MountModel>> m_exposureSamples;   // (julian date, mount) every 0.1 s through an exposure
+    bool m_exposureSampling = false;
+    void stepMount();
+    void handleSimRequest(QTcpSocket *socket, const QString &path);   // GET /sim/state, /sim/truth, /sim/slip?degrees=x: for tests
 
     EnhancedMosaicCreator* m_mosaicCreator;
     bool m_mosaicInProgress;
@@ -90,7 +97,7 @@ private:
     void setupInitialization();
     void updateInitialization();
     void completeInitialization();
-    void failInitialization();
+    void failInitialization(int code, const QString &message);
 
     // Absolute paths for image serving
     QString m_absoluteTempDir;

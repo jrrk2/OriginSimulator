@@ -86,6 +86,15 @@ void CommandHandler::processCommand(const QJsonObject &obj, WebSocketConnection 
         handleGetDirectConnectPassword(obj, wsConn, sequenceId, source, destination);
     } else if (command == "Slew" && destination == "Mount") {
         handleSlew(obj, wsConn, sequenceId, source, destination);
+    } else if (command == "TrackMovingTarget" && destination == "Mount") {
+        handleTrackMovingTarget(obj, wsConn, sequenceId, source, destination);
+    } else if (command == "HaltTasks" && destination == "TaskController") {
+        // real firmware (capture origin1.txt) acks HaltTasks, and the running goto or track stops
+        m_telescopeState->mount.halt();
+        reply(wsConn, command, sequenceId, source, destination);
+    } else if (command == "SetDisableLiveStream" && destination == "LiveStream") {
+        m_telescopeState->liveStreamDisabled = obj["Disable"].toBool(true);
+        reply(wsConn, command, sequenceId, source, destination);
     } else {
         // Default response for unimplemented commands
         QJsonObject response;
@@ -104,52 +113,60 @@ void CommandHandler::processCommand(const QJsonObject &obj, WebSocketConnection 
 
 // In CommandHandler.cpp
 
-void CommandHandler::handleRunInitialize(const QJsonObject &obj, WebSocketConnection *wsConn, int sequenceId, const QString &source, const QString &destination) {
-    // Update telescope state
-    m_telescopeState->dateTime = QDateTime::currentDateTime();
-    
-    if (obj.contains("Date")) m_telescopeState->dateTime.setDate(QDate::fromString(obj["Date"].toString(), "dd MM yyyy"));
-    if (obj.contains("Time")) m_telescopeState->dateTime.setTime(QTime::fromString(obj["Time"].toString(), "hh:mm:ss"));
-    if (obj.contains("Latitude")) m_telescopeState->latitude = obj["Latitude"].toDouble();
-    if (obj.contains("Longitude")) m_telescopeState->longitude = obj["Longitude"].toDouble();
-    if (obj.contains("TimeZone")) m_telescopeState->timeZone = obj["TimeZone"].toString();
-    
-    // Set fake initialization flag if specified
-    if (obj.contains("FakeInitialize")) {
-        m_telescopeState->isFakeInitialized = obj["FakeInitialize"].toBool();
-    } else {
-        m_telescopeState->isFakeInitialized = false;
-    }
-    
-    // Start the initialization process
-    m_telescopeState->isInitializing = false;
-    m_telescopeState->initializationProgress = 0;
-    m_telescopeState->state = "INITIALIZED";
-    m_telescopeState->stage = "FINISHED";
-    m_telescopeState->isReady = true;
-    
-    // Reset initialization info
-    m_telescopeState->initInfo.numPoints = 2;
-    m_telescopeState->initInfo.positionOfFocus = -1;
-    m_telescopeState->initInfo.numPointsRemaining = 0;
-    m_telescopeState->initInfo.percentComplete = 100;
-    m_telescopeState->isAligned = true;
-    
-    // Send immediate response
+void CommandHandler::reply(WebSocketConnection *wsConn, const QString &command, int sequenceId, const QString &source, const QString &destination, int errorCode, const QString &message) {
     QJsonObject response;
-    response["Command"] = "RunInitialize";
+    response["Command"] = command;
     response["Destination"] = source;
-    response["ErrorCode"] = 0;
-    response["ErrorMessage"] = "";
+    response["ErrorCode"] = errorCode;
+    response["ErrorMessage"] = message;
     response["ExpiredAt"] = QDateTime::currentDateTime().toSecsSinceEpoch();
     response["SequenceID"] = sequenceId;
     response["Source"] = destination;
     response["Type"] = "Response";
-    
     sendJsonResponse(wsConn, response);
-    
-    // Emit signal to start the initialization simulation
-    emit initializationStarted(obj.contains("FakeInitialize") && obj["FakeInitialize"].toBool());
+}
+
+void CommandHandler::handleRunInitialize(const QJsonObject &obj, WebSocketConnection *wsConn, int sequenceId, const QString &source, const QString &destination) {
+    // A real initialisation already running refuses a second (2026-11-07: -73 after a reboot, when the firmware starts one by itself)
+    if (m_telescopeState->isInitializing) {
+        reply(wsConn, "RunInitialize", sequenceId, source, destination, -73, "Initialization already in progress");
+        return;
+    }
+    m_telescopeState->dateTime = QDateTime::currentDateTime();
+    if (obj.contains("Date")) m_telescopeState->dateTime.setDate(QDate::fromString(obj["Date"].toString(), "dd MM yyyy"));
+    if (obj.contains("Time")) m_telescopeState->dateTime.setTime(QTime::fromString(obj["Time"].toString(), "hh:mm:ss"));
+    if (obj.contains("TimeZone")) m_telescopeState->timeZone = obj["TimeZone"].toString();
+    // the site comes in radians, as the mount status reports it
+    MountModel& m = m_telescopeState->mount;
+    m.setSite(obj.contains("Latitude") ? obj["Latitude"].toDouble() : m.latitudeRad(), obj.contains("Longitude") ? obj["Longitude"].toDouble() : m.longitudeRad());
+
+    const bool fake = obj["FakeInitialize"].toBool(false);
+    m_telescopeState->isFakeInitialized = fake;
+    if (fake) {
+        // declared at once: this pointing is azimuth 180 at the tilt sensor's altitude; the mount does not move
+        m.initialise(true, TelescopeState::julianDateNow());
+        m_telescopeState->isReady = true;
+        m_telescopeState->isAligned = true;
+        m_telescopeState->numAlignRefs = 0;
+        m_telescopeState->state = "INITIALIZING";
+        m_telescopeState->stage = "IN_PROGRESS";
+    } else {
+        // the real one runs for a while (CelestronOriginSimulator::updateInitialization) and needs the live stream for its references
+        m.halt();
+        m_telescopeState->isInitializing = true;
+        m_telescopeState->isReady = false;
+        m_telescopeState->isAligned = false;
+        m_telescopeState->numAlignRefs = 0;
+        m_telescopeState->state = "INITIALIZING";
+        m_telescopeState->stage = "IN_PROGRESS";
+        m_telescopeState->initInfo.numPoints = 0;
+        m_telescopeState->initInfo.positionOfFocus = -1;
+        m_telescopeState->initInfo.numPointsRemaining = 2;
+        m_telescopeState->initInfo.percentComplete = 0;
+    }
+    reply(wsConn, "RunInitialize", sequenceId, source, destination);
+    emit taskControllerStatusChanged();
+    emit initializationStarted(fake);
 }
 
 void CommandHandler::handleStartAlignment(const QJsonObject &obj, WebSocketConnection *wsConn, int sequenceId, const QString &source, const QString &destination) {
@@ -204,142 +221,41 @@ void CommandHandler::handleFinishAlignment(const QJsonObject &obj, WebSocketConn
 }
 
 void CommandHandler::handleGotoRaDec(const QJsonObject &obj, WebSocketConnection *wsConn, int sequenceId, const QString &source, const QString &destination) {
-    if (m_telescopeState->isAligned) {
-        m_telescopeState->isGotoOver = false;
-        m_telescopeState->isSlewing = true;
-	m_telescopeState->syncTracking();
-
-        // ADD THESE DEBUG LINES:
-        double received_ra = obj["Ra"].toDouble();
-        double received_dec = obj["Dec"].toDouble();
-        if (true) qDebug() << "*** GOTO COMMAND RECEIVED ***";
-        if (false) qDebug() << "Raw RA from JSON:" << received_ra << "radians";
-        if (false) qDebug() << "Raw Dec from JSON:" << received_dec << "radians";
-        if (true) qDebug() << "RA in hours:" << (received_ra * 12.0 / M_PI);
-        if (true) qDebug() << "Dec in degrees:" << (received_dec * 180.0 / M_PI);
-        
-        m_telescopeState->targetRa = received_ra;
-        m_telescopeState->targetDec = received_dec;
-        
-        if (false) qDebug() << "Stored targetRa:" << m_telescopeState->targetRa;
-        if (false) qDebug() << "Stored targetDec:" << m_telescopeState->targetDec;	
-        
-        emit slewStarted();
-        
-        QJsonObject response;
-        response["Command"] = "GotoRaDec";
-        response["Destination"] = source;
-        response["ErrorCode"] = 0;
-        response["ErrorMessage"] = "";
-        response["ExpiredAt"] = QDateTime::currentDateTime().toSecsSinceEpoch();
-        response["SequenceID"] = sequenceId;
-        response["Source"] = destination;
-        response["Type"] = "Response";
-        
-        sendJsonResponse(wsConn, response);
-    } else {
-        QJsonObject response;
-        response["Command"] = "GotoRaDec";
-        response["Destination"] = source;
-        response["ErrorCode"] = 1;
-        response["ErrorMessage"] = "Telescope not aligned";
-        response["ExpiredAt"] = QDateTime::currentDateTime().toSecsSinceEpoch();
-        response["SequenceID"] = sequenceId;
-        response["Source"] = destination;
-        response["Type"] = "Response";
-        
-        sendJsonResponse(wsConn, response);
+    // J2000 radians; refused until the firmware is ready (an initialisation, real or fake), as the real one answers -5
+    const double ra = obj["Ra"].toDouble(), dec = obj["Dec"].toDouble();
+    if (!m_telescopeState->isReady || !m_telescopeState->mount.gotoJ2000(ra, dec, TelescopeState::julianDateNow())) {
+        reply(wsConn, "GotoRaDec", sequenceId, source, destination, -5, "Not ready");
+        return;
     }
+    m_telescopeState->targetRa = ra;
+    m_telescopeState->targetDec = dec;
+    qDebug() << "GotoRaDec: RA" << ra * 12.0 / M_PI << "h Dec" << dec * 180.0 / M_PI << "deg, the short way round";
+    reply(wsConn, "GotoRaDec", sequenceId, source, destination);
+}
+
+void CommandHandler::handleTrackMovingTarget(const QJsonObject &obj, WebSocketConnection *wsConn, int sequenceId, const QString &source, const QString &destination) {
+    // TargetTrack: [{Ra, Dec (J2000 radians), JulianDate (UTC)}], followed by interpolation; the firmware follows it from the first point to the last
+    std::vector<MountModel::TrackPoint> points;
+    for (const QJsonValue& v : obj["TargetTrack"].toArray()) {
+        const QJsonObject p = v.toObject();
+        points.push_back({ p["Ra"].toDouble(), p["Dec"].toDouble(), p["JulianDate"].toDouble() });
+    }
+    if (!m_telescopeState->isReady || !m_telescopeState->mount.track(points)) {
+        reply(wsConn, "TrackMovingTarget", sequenceId, source, destination, -5, "Not ready");
+        return;
+    }
+    qDebug() << "TrackMovingTarget:" << points.size() << "points";
+    reply(wsConn, "TrackMovingTarget", sequenceId, source, destination);
 }
 
 void CommandHandler::handleSlew(const QJsonObject &obj, WebSocketConnection *wsConn, int sequenceId, const QString &source, const QString &destination) {
-    if (m_telescopeState->isAligned) {
-        m_telescopeState->isGotoOver = false;
-        m_telescopeState->isSlewing = true;
-	m_telescopeState->syncTracking();
-
-        if (false) qDebug() << "*** SLEW COMMAND RECEIVED ***";
-        // Iterate with auto and structured bindings (C++17)
-        if (false) for (auto it = obj.begin(); it != obj.end(); ++it) {
-            QString key = it.key();
-            QJsonValue value = it.value();
-            // Process key and value
-            if (true) qDebug() << key << ": " << value;
-        }
-
-        long alt_rate = obj["AltRate"].toInt();
-        long az_rate = obj["AzmRate"].toInt();
-        alt_rate = alt_rate < 0 ? -1 << -alt_rate : (1 << alt_rate) - 1;
-        az_rate = az_rate < 0 ? -1 << -az_rate : (1 << az_rate) - 1;
-        
-        if (true) qDebug() << alt_rate << " " << az_rate;
-	
-        // Your RA/Dec coordinates
-        struct ln_equ_posn equ_pos;
-        equ_pos.ra = m_telescopeState->targetRa * 180.0 / M_PI;
-        // Right Ascension in degrees
-        equ_pos.dec = m_telescopeState->targetDec * 180.0 / M_PI;
-        // Declination in degrees
-        // Observer location
-        struct ln_lnlat_posn observer;
-        observer.lng = m_telescopeState->longitude;   // Longitude (negative for West)
-        observer.lat = m_telescopeState->latitude;    // Latitude (positive for North)
-
-        // Get current Julian Date
-        double JD = ln_get_julian_from_sys();
-
-        // Convert to Alt/Az
-        struct ln_hrz_posn hrz_pos;
-        ln_get_hrz_from_equ(&equ_pos, &observer, JD, &hrz_pos);
-
-        hrz_pos.az += alt_rate / 3600.0;
-        hrz_pos.alt += az_rate / 3600.0;
-        // Convert Alt/Az to RA/Dec
- 
-        ln_get_equ_from_hrz(&hrz_pos, &observer, JD, &equ_pos);
-
-        if (true) qDebug() << "Old Incremental targetRa/Dec:"
-            << m_telescopeState->targetRa << " "
-            << m_telescopeState->targetDec;
-
-        m_telescopeState->targetRa = equ_pos.ra * M_PI / 180.0;
-        m_telescopeState->targetDec = equ_pos.dec * M_PI / 180.0;
-
-        if (true) qDebug() << "New Incremental targetRa/Dec:"
-            << m_telescopeState->targetRa << " "
-            << m_telescopeState->targetDec;
-        
-        emit slewStarted();
-        
-        QJsonObject response;
-        response["Command"] = "Slew";
-        response["Destination"] = source;
-        response["ErrorCode"] = 0;
-        response["ErrorMessage"] = "";
-        response["ExpiredAt"] = QDateTime::currentDateTime().toSecsSinceEpoch();
-        response["SequenceID"] = sequenceId;
-        response["Source"] = destination;
-        response["Type"] = "Response";
-        
-        sendJsonResponse(wsConn, response);
-    } else {
-        QJsonObject response;
-        response["Command"] = "Slew";
-        response["Destination"] = source;
-        response["ErrorCode"] = 1;
-        response["ErrorMessage"] = "Telescope not aligned";
-        response["ExpiredAt"] = QDateTime::currentDateTime().toSecsSinceEpoch();
-        response["SequenceID"] = sequenceId;
-        response["Source"] = destination;
-        response["Type"] = "Response";
-        
-        sendJsonResponse(wsConn, response);
-    }
+    // relative moves at a rate, -9..9, with or without an initialisation; zero rates stop a manual move and leave a goto or track running
+    m_telescopeState->mount.setRates(obj["AltRate"].toInt(), obj["AzmRate"].toInt());
+    reply(wsConn, "Slew", sequenceId, source, destination);
 }
 
 void CommandHandler::handleAbortAxisMovement(const QJsonObject &obj, WebSocketConnection *wsConn, int sequenceId, const QString &source, const QString &destination) {
-    m_telescopeState->isGotoOver = true;
-    m_telescopeState->isSlewing = false;
+    m_telescopeState->mount.halt();
     
     QJsonObject response;
     response["Command"] = "AbortAxisMovement";
@@ -746,6 +662,8 @@ void CommandHandler::handleGetPositionLimits(const QJsonObject &obj, WebSocketCo
     response["Type"] = "Response";
     response["MaximumPosition"] = 40000;
     response["MinimumPosition"] = 0;
+    response["Max"] = 37527;            // as the real telescope states its focuser travel (capture origin1.txt)
+    response["Min"] = 1975;
     
     sendJsonResponse(wsConn, response);
 }
@@ -818,7 +736,6 @@ void CommandHandler::handleRunSampleCapture(const QJsonObject &obj, WebSocketCon
     // Set TaskController state for sample capture
     m_telescopeState->state = "SAMPLE_CAPTURE";
     m_telescopeState->stage = "IN_PROGRESS";
-    m_telescopeState->isReady = true;
     
     // Send immediate response
     QJsonObject response;

@@ -82,18 +82,30 @@ QByteArray FitsImageGenerator::generate(const Params& p)
             for (int y = 0; y < h; ++y) for (int x = 0; x < w; ++x) img[size_t(y + y0) * W + x + x0] += float(K * a[size_t(y) * w + x] * gain(x + x0, y + y0));
         }
     }
-    for (int i = 0; i < nCat; ++i) {
-        const double sx = cat.uniform() * (W + 2 * margin) - margin + dx, sy = cat.uniform() * (H + 2 * margin) - margin + dy;
-        const double mag = 6.0 * std::pow(cat.uniform(), 0.7);                           // 0 (brightest) .. 6 magnitudes fainter
+    const bool real = p.catalogue != nullptr;
+    const int nStars = real ? int(p.catalogue->size()) : nCat;
+    for (int i = 0; i < nStars; ++i) {
+        double sx, sy, flux;
+        if (real) {
+            const auto& s = (*p.catalogue)[size_t(i)];
+            sx = s.x + dx - offX; sy = s.y + dy - offY;                                   // the dither only: the positions are for this pointing already
+            flux = 600.0 * expo * clear * std::pow(10.0, -0.4 * (s.g - 12.0)) * s.weight;
+        } else {
+            sx = cat.uniform() * (W + 2 * margin) - margin + dx; sy = cat.uniform() * (H + 2 * margin) - margin + dy;
+            const double mag = 6.0 * std::pow(cat.uniform(), 0.7);                       // 0 (brightest) .. 6 magnitudes fainter
+            flux = 9000.0 * expo * clear * std::pow(10.0, -0.4 * mag);                   // total ADU above sky in the green plane
+        }
         if (sx < -20 || sx > W + 20 || sy < -20 || sy > H + 20) continue;
         if (p.survey && sx >= p.surveyFootprint[0] && sx < p.surveyFootprint[2] && sy >= p.surveyFootprint[1] && sy < p.surveyFootprint[3]) continue;   // the survey supplies these
-        const double flux = 9000.0 * expo * clear * std::pow(10.0, -0.4 * mag);          // total ADU above sky in the green plane
-        const double amp = flux / (2.0 * M_PI * sigma * sigma);
-        const int R = std::min(40, int(std::ceil(4.0 * sigma)));
+        // an elliptical gaussian: the width stays, the length grows with the elongation, along (cos t, -sin t) in pixels (image y runs down)
+        const double sMaj = sigma * std::max(1.0, p.elongation), sMin = sigma;
+        const double ct = std::cos(p.elongationAngleDeg * M_PI / 180.0), st = -std::sin(p.elongationAngleDeg * M_PI / 180.0);
+        const double amp = flux / (2.0 * M_PI * sMaj * sMin);
+        const int R = std::min(60, int(std::ceil(4.0 * sMaj)));
         for (int y = std::max(0, int(sy) - R); y <= std::min(H - 1, int(sy) + R); ++y)
             for (int x = std::max(0, int(sx) - R); x <= std::min(W - 1, int(sx) + R); ++x) {
-                const double r2 = (x - sx) * (x - sx) + (y - sy) * (y - sy);
-                img[size_t(y) * W + x] += float(amp * gain(x, y) * std::exp(-r2 / (2 * sigma * sigma)));
+                const double u = (x - sx) * ct + (y - sy) * st, v = -(x - sx) * st + (y - sy) * ct;
+                img[size_t(y) * W + x] += float(amp * gain(x, y) * std::exp(-(u * u) / (2 * sMaj * sMaj) - (v * v) / (2 * sMin * sMin)));
             }
     }
 
@@ -115,7 +127,9 @@ QByteArray FitsImageGenerator::generate(const Params& p)
     hdr += card("EXPTIME", QString::number(p.exposureS, 'g', 8), "seconds");
     hdr += card("ISO", QString::number(p.iso)); hdr += card("GAIN", QString::number(p.iso));
     hdr += card("BAYERPAT", "'RGGB    '"); hdr += card("INSTRUME", "'Celestron Origin (simulated)'");
-    hdr += card("RA", QString::number(p.raRad * 57.29577951, 'f', 6), "deg"); hdr += card("DEC", QString::number(p.decRad * 57.29577951, 'f', 6), "deg");
+    const double hRa = std::isnan(p.reportedRaRad) ? p.raRad : p.reportedRaRad, hDec = std::isnan(p.reportedDecRad) ? p.decRad : p.reportedDecRad;
+    hdr += card("RA", QString::number(hRa * 57.29577951, 'f', 6), "deg"); hdr += card("DEC", QString::number(hDec * 57.29577951, 'f', 6), "deg");
+    hdr += card("SIMSTARS", real ? "'GAIA    '" : "'SYNTHETIC'");
     hdr += card("FOCPOS", QString::number(p.focuserPosition)); hdr += card("ASTRSOLV", "F");
     hdr += card("DATE-OBS", "'" + QDateTime::currentDateTimeUtc().toString("yyyy-MM-ddTHH:mm:ss") + "'");
     hdr += QByteArray("END").leftJustified(80, ' ');

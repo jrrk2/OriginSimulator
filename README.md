@@ -178,3 +178,33 @@ instead of a TIFF: 3056 x 2048, `BITPIX` 16 / `BZERO` 32768, black level about 4
 focuser position (best focus at 18900, so a focus sweep shows a V-curve), and brightness follows exposure x ISO. Set `ORIGIN_SIM_CLOUD=0..1` to dim the stars.
 `MoveTo` (with `Value`) on the Focuser is accepted as well as `MoveToPosition`. The simulator listens on port 80 (`SERVER_PORT`); on Linux use a high port and tell the
 client, e.g. `OriginHeadless serve --connect 127.0.0.1 --telescope-port 8080`.
+
+## The mount as a machine (for host-side calibration and cord-wrap tests)
+
+`MountModel` simulates the mount mechanically, so that a client can be tested on what a real Origin on uneven ground does, not on an ideal mount:
+
+- **Encoders and a tilted base.** `Enc0`/`Enc1` (radians, azimuth wrapped as the firmware reports it) are always in the mount status. The true pointing comes
+  from them through the altitude encoder's zero, tube flexure (F cos alt), a cone error (optical axis off square to the altitude axis), periodic error in each
+  axis's worm (with a second harmonic), the azimuth encoder's zero and the base's tilt (a rotation).
+- **A secret set-up.** Each start picks a level error up to 10 degrees toward any side, a random azimuth zero, and plausible altitude zero, flexure, cone error,
+  periodic error and tilt-sensor offset. `ORIGIN_SIM_SEED` repeats one; `ORIGIN_SIM_SECRET=0` gives the mount measured on 2026-11-08 (5 degrees toward
+  azimuth 18). `GET /sim/truth` reveals it, for scoring a calibration after it has finished; `GET /sim/state` shows only what someone at the telescope could see.
+- **The firmware's frame.** After an initialisation the firmware reports `Alt`/`Azm` = encoders plus constant offsets (a level-base model) and `Ra`/`Dec` in J2000.
+  A fake initialisation (`RunInitialize` with `FakeInitialize`) declares the current pointing to be azimuth 180 at the tilt sensor's altitude; a real one finds
+  the true pointing, fails with -53 if the live stream is disabled, and refuses a second with -73. `GotoRaDec` and `TrackMovingTarget` answer -5 until the
+  firmware is ready, turn the azimuth the short way round (as the firmware does), and track after arriving; `HaltTasks` stops them. `Slew` works at any time,
+  at the measured speeds (rate 9 about 4 deg/s); zero rates leave a goto or track running.
+- **Cables.** The running count of azimuth from cable-neutral (`ORIGIN_SIM_CABLE_NEUTRAL`, default the start). Past 180 degrees the log warns `CORD WRAP`; past
+  `ORIGIN_SIM_CORD_BREAK` (270) the cord snaps and from then on the azimuth clutch slips. `GET /sim/slip?degrees=x` simulates a knock.
+- **The sky in the frames.** Real stars from Gaia DR3 (see `data/README.md`), each refracted at its own altitude (Saemundsson, `ORIGIN_SIM_PRESSURE`,
+  `ORIGIN_SIM_TEMPERATURE`), in the gnomonic projection onto the plane square to the tube, with the camera's orientation as the mount carries it. Each frame
+  integrates the mount through the exposure, so a tracked field rotates about its centre (fastest near the zenith) and a still mount lets the stars trail; for
+  30 s after a slew the stars are oval. The FITS header and `NewImageReady` carry the firmware's idea of the pointing, never the truth.
+
+Other settings: `ORIGIN_SIM_PORT` (default 80), `ORIGIN_SIM_BROADCAST=0` (no discovery broadcast, when a real telescope is on the network),
+`ORIGIN_SIM_START_READY=0` (start uninitialised), `ORIGIN_SIM_START="enc0,enc1"`, `ORIGIN_SIM_TILT="deg,toward"`, `ORIGIN_SIM_AZ_ZERO`, `ORIGIN_SIM_ALT_ZERO`,
+`ORIGIN_SIM_FLEXURE`, `ORIGIN_SIM_CONE` (arcmin), `ORIGIN_SIM_PE="az,alt"` (arcsec), `ORIGIN_SIM_WORM_TEETH` (a placeholder: the Origin's is not known),
+`ORIGIN_SIM_REFRACTION=0`, `ORIGIN_SIM_SETTLE` (seconds), `ORIGIN_SIM_INIT_TICK_MS`, `ORIGIN_SIM_INIT_FAIL` (percent), `ORIGIN_SIM_GAIA` (a catalogue file, a
+Cartes du Ciel folder, or `none`).
+
+PI.N.S.'s tests drive all of this end to end: `ORIGIN_SIM=127.0.0.1:18080 dotnet test --filter "OriginSimulatorCalibrationTest|OriginSimulatorDitherTest"`.

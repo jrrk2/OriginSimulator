@@ -34,9 +34,8 @@ void StatusSender::sendJsonMessageToAll(const QJsonObject &obj) {
 }
 
 void StatusSender::sendMountStatus(WebSocketConnection *specificClient, int sequenceId, const QString &destination) {
-    // Update coordinates before sending
-    m_telescopeState->updateCelestialCoordinates();
-    
+    MountModel& m = m_telescopeState->mount;
+    const double jd = TelescopeState::julianDateNow();
     QJsonObject mountStatus;
     mountStatus["Command"] = "GetStatus";
     mountStatus["Destination"] = destination.isEmpty() ? "All" : destination;
@@ -46,17 +45,26 @@ void StatusSender::sendMountStatus(WebSocketConnection *specificClient, int sequ
     mountStatus["Date"] = m_telescopeState->getCurrentDate();
     mountStatus["Time"] = m_telescopeState->getCurrentTime();
     mountStatus["TimeZone"] = m_telescopeState->timeZone;
-    mountStatus["Latitude"] = m_telescopeState->latitude;
-    mountStatus["Longitude"] = m_telescopeState->longitude;
+    mountStatus["Latitude"] = m.latitudeRad();
+    mountStatus["Longitude"] = m.longitudeRad();
     mountStatus["IsAligned"] = m_telescopeState->isAligned;
-    mountStatus["IsGotoOver"] = m_telescopeState->isGotoOver;
-    mountStatus["IsTracking"] = m_telescopeState->isTracking;
+    mountStatus["IsGotoOver"] = m.isGotoOver();
+    mountStatus["IsTracking"] = m.isTracking();
     mountStatus["NumAlignRefs"] = m_telescopeState->numAlignRefs;
-    mountStatus["Enc0"] = m_telescopeState->enc0;
-    mountStatus["Enc1"] = m_telescopeState->enc1;
+    // the encoders always, in radians, the azimuth wrapped as the firmware reports it
+    mountStatus["Enc0"] = m.enc0Deg() * M_PI / 180.0;
+    mountStatus["Enc1"] = m.enc1Deg() * M_PI / 180.0;
     mountStatus["ExpiredAt"] = m_telescopeState->getExpiredAt();
-    mountStatus["Ra"] = m_telescopeState->ra;
-    mountStatus["Dec"] = m_telescopeState->dec;
+    if (m.isInitialised()) {
+        // the firmware's frame: a level-base model from its initialisation; RA/Dec J2000
+        double alt, az, ra, dec;
+        m.firmwareAltAz(alt, az);
+        m.firmwareJ2000(jd, ra, dec);
+        mountStatus["Alt"] = alt * M_PI / 180.0;
+        mountStatus["Azm"] = az * M_PI / 180.0;
+        mountStatus["Ra"] = ra;
+        mountStatus["Dec"] = dec;
+    }
     
     if (sequenceId != -1) {
         // Response to a specific command
@@ -160,13 +168,15 @@ void StatusSender::sendCameraParams(WebSocketConnection *specificClient, int seq
 }
 
 void StatusSender::sendNewImageReady(WebSocketConnection *specificClient) {
-    // Update coordinates and get next image
-    m_telescopeState->updateCelestialCoordinates();    
     QJsonObject newImage;
     newImage["Command"] = "NewImageReady";
     newImage["Destination"] = "All";
-    newImage["Ra"] = m_telescopeState->ra;
-    newImage["Dec"] = m_telescopeState->dec;
+    if (m_telescopeState->mount.isInitialised()) {
+        double ra, dec;                                        // what the firmware believes, as on a real frame
+        m_telescopeState->mount.firmwareJ2000(TelescopeState::julianDateNow(), ra, dec);
+        newImage["Ra"] = ra;
+        newImage["Dec"] = dec;
+    }
     newImage["FovX"] = m_telescopeState->fovX;
     newImage["FovY"] = m_telescopeState->fovY;
     newImage["Orientation"] = m_telescopeState->orientation;
@@ -299,12 +309,11 @@ void StatusSender::sendDewHeaterStatus(WebSocketConnection *specificClient, int 
 }
 
 void StatusSender::sendOrientationStatus(WebSocketConnection *specificClient, int sequenceId, const QString &destination) {
-    // Update altitude
-    m_telescopeState->updateEnvironmentalSensors(); // This updates altitude too
+    m_telescopeState->updateEnvironmentalSensors();
     
     QJsonObject orientationStatus;
     orientationStatus["Destination"] = destination.isEmpty() ? "All" : destination;
-    orientationStatus["Altitude"] = m_telescopeState->altitude;
+    orientationStatus["Altitude"] = m_telescopeState->mount.tiltSensorDeg();       // the tube's true altitude plus the sensor's bias
     orientationStatus["ExpiredAt"] = m_telescopeState->getExpiredAt();
     
     if (sequenceId != -1) {
@@ -350,10 +359,9 @@ void StatusSender::sendTaskControllerStatus(WebSocketConnection *specificClient,
         
         taskStatus["InitializationInfo"] = initInfo;
         
-        // Only add this flag if we're in a completion or post-init state
-        if (m_telescopeState->stage == "COMPLETE" || m_telescopeState->state == "IDLE") {
-            taskStatus["IsFakeInitialized"] = m_telescopeState->isFakeInitialized;
-        }
+    }
+    if (m_telescopeState->mount.isInitialised()) {
+        taskStatus["IsFakeInitialized"] = m_telescopeState->mount.isFakeInitialised();
     }
     
     if (sequenceId != -1) {

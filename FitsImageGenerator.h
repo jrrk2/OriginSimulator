@@ -2,6 +2,7 @@
 #define FITSIMAGEGENERATOR_H
 
 #include <QByteArray>
+#include <cmath>
 #include <vector>
 
 /**
@@ -33,6 +34,15 @@ public:
         // (x0, y0, x1, y1; the area the survey tiles cover); outside it the synthetic stars remain.
         const std::vector<float>* survey = nullptr;
         int surveyFootprint[4] = {0, 0, 0, 0};
+        // Optional real stars (see GaiaSky): pixel positions for the true pointing and Gaia G magnitudes. When given they replace the synthetic
+        // stars, so that plate solvers solve the frame where the tube points. G 12 gives about 600 ADU per (exposure x ISO) unit.
+        // weight: the share of the exposure a position holds; a star drawn at several positions through the exposure trails (field rotation, sidereal drift)
+        struct PixelStar { double x, y, g, weight = 1.0; };
+        const std::vector<PixelStar>* catalogue = nullptr;
+        // What the header's RA/DEC report: the firmware's idea of the pointing, as on a real frame (NaN: the pointing above). The truth is not in the header.
+        double reportedRaRad = NAN, reportedDecRad = NAN;
+        // Star shape: length over width (1 round; the tube still ringing after a slew makes them oval) and the long axis's angle, from the image's right toward up
+        double elongation = 1.0, elongationAngleDeg = 0.0;
     };
 
     static QByteArray generate(const Params& p);

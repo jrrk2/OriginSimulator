@@ -5,6 +5,9 @@
 #include <QDateTime>
 #include <QStringList>
 #include <QRandomGenerator>
+#include <libnova/julian_day.h>
+
+#include "MountModel.h"
 
 class TelescopeState {
 public:
@@ -16,8 +19,10 @@ public:
     QString chargerStatus = "CHARGING";
     QDateTime dateTime = QDateTime::currentDateTime();
     QString timeZone = "Europe/London";
-    double latitude = 51.5072;   // London
-    double longitude = 0.1276;
+    // The mount as a machine: encoders, tilted base, flexure, the firmware's frame, cables (see MountModel). The site lives there, in radians.
+    MountModel mount;
+    bool liveStreamDisabled = false;     // SetDisableLiveStream; the firmware cannot add alignment references without the live stream
+    static double julianDateNow() { return ln_get_julian_from_sys(); }
     bool isAligned = true;  // Real telescope shows aligned
     bool isGotoOver = true;
     bool isTracking = false;
@@ -141,6 +146,13 @@ public:
   }
     TelescopeState() {
         syncTracking();
+        // ORIGIN_SIM_START_READY=0 starts uninitialised, as after a reboot with the automatic initialisation off; otherwise as after a real initialisation
+        if (qEnvironmentVariable("ORIGIN_SIM_START_READY", "1") != "0") {
+            mount.initialise(false, julianDateNow());
+            isReady = true; state = "IDLE"; stage = "COMPLETE"; isAligned = true; numAlignRefs = 2;
+        } else {
+            isReady = false; state = "IDLE"; stage = "STOPPED"; isAligned = false; numAlignRefs = 0;
+        }
         // Initialize with some random variation like real telescope
         ambientTemperature += (QRandomGenerator::global()->bounded(200) - 100) / 100.0; // ±1°C variation
         cpuTemperature += (QRandomGenerator::global()->bounded(400) - 200) / 100.0;     // ±2°C variation
