@@ -918,11 +918,10 @@ void CelestronOriginSimulator::sendStatusUpdates() {
         });
     }
     
-    if (updateCounter % 30 == 0) {
-        QTimer::singleShot(25, this, [this]() {
-            m_statusSender->sendOrientationStatusToAll();
-        });
-    }
+    // every second, as the real telescope sends its tilt (60 readings a minute, 2026-11-07): PI.N.S. raises the tube by it and stops if it goes stale
+    QTimer::singleShot(25, this, [this]() {
+        m_statusSender->sendOrientationStatusToAll();
+    });
     
     if (updateCounter % 5 == 0) {
         QTimer::singleShot(30, this, [this]() {
