@@ -287,19 +287,9 @@ void CommandHandler::handleStartTracking(const QJsonObject &obj, WebSocketConnec
 }
 
 void CommandHandler::handleStopTracking(const QJsonObject &obj, WebSocketConnection *wsConn, int sequenceId, const QString &source, const QString &destination) {
-    m_telescopeState->isTracking = false;
-    
-    QJsonObject response;
-    response["Command"] = "StopTracking";
-    response["Destination"] = source;
-    response["ErrorCode"] = 0;
-    response["ErrorMessage"] = "";
-    response["ExpiredAt"] = QDateTime::currentDateTime().toSecsSinceEpoch();
-    response["SequenceID"] = sequenceId;
-    response["Source"] = destination;
-    response["Type"] = "Response";
-    
-    sendJsonResponse(wsConn, response);
+    // firmware 1.5.x answers "Unknown command" (2026-11-08): tracking is stopped with HaltTasks
+    Q_UNUSED(obj);
+    reply(wsConn, "StopTracking", sequenceId, source, destination, -2, "Unknown command");
 }
 
 void CommandHandler::handleRunImaging(const QJsonObject &obj, WebSocketConnection *wsConn, int sequenceId, const QString &source, const QString &destination) {

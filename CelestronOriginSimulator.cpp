@@ -96,9 +96,8 @@ void CelestronOriginSimulator::setupHipsIntegration() {
     if (false) qDebug() << "ProperHips integration initialized";
     if (false) qDebug() << "HiPS images will be saved to:" << hipsDir;
 
-    // Set initial coordinates
-    m_telescopeState->ra = m_telescopeState->baseRA;
-    m_telescopeState->dec = m_telescopeState->baseDec;
+    // Set initial coordinates: where the mount model points
+    m_telescopeState->mount.trueJ2000(TelescopeState::julianDateNow(), m_telescopeState->ra, m_telescopeState->dec);
 
     // Start with initial position fetch
     SkyPosition initialPos = {
@@ -216,10 +215,6 @@ void CelestronOriginSimulator::setupConnections() {
     connect(m_tcpServer, &QTcpServer::newConnection, this, &CelestronOriginSimulator::handleNewConnection);
     
     // Connect command handler signals
-    connect(m_commandHandler, &CommandHandler::slewStarted, this, [this]() {
-        m_slewTimer->start(500);
-    });
-    
     connect(m_commandHandler, &CommandHandler::imagingStarted, this, [this]() {
         m_imagingTimer->start(1000);
         // record the mount through the exposure (stepMount, every 0.1 s): that is what the frame shows
@@ -267,10 +262,6 @@ void CelestronOriginSimulator::setupTimers() {
     connect(m_updateTimer, &QTimer::timeout, this, &CelestronOriginSimulator::sendStatusUpdates);
     m_updateTimer->start(1000);
     
-    // Create slew timer
-    m_slewTimer = new QTimer(this);
-    connect(m_slewTimer, &QTimer::timeout, this, &CelestronOriginSimulator::updateSlew);
-    
     // Create imaging timer
     m_imagingTimer = new QTimer(this);
     connect(m_imagingTimer, &QTimer::timeout, this, &CelestronOriginSimulator::updateImaging);
@@ -284,55 +275,6 @@ void CelestronOriginSimulator::setupTimers() {
     m_initTimer = new QTimer(this);
     m_initTimer->setSingleShot(false);
     connect(m_initTimer, &QTimer::timeout, this, &CelestronOriginSimulator::updateInitialization);
-}
-
-void CelestronOriginSimulator::updateSlew() {
-    static int slewProgress = 0;
-    
-    // Simulate slew progress
-    slewProgress += 20;  // 20% progress per 500ms
-    
-    if (slewProgress >= 100) {
-        if (false) qDebug() << "Before update - RA:" << m_telescopeState->ra << "Dec:" << m_telescopeState->dec;
-        if (false) qDebug() << "Target RA:" << m_telescopeState->targetRa << "Target Dec:" << m_telescopeState->targetDec;
-        
-        // Slew complete
-        m_telescopeState->isGotoOver = true;
-        m_telescopeState->isSlewing = false;
-        m_telescopeState->baseRA = m_telescopeState->targetRa;
-        m_telescopeState->baseDec = m_telescopeState->targetDec;
-        m_telescopeState->ra = m_telescopeState->baseRA;
-        m_telescopeState->dec = m_telescopeState->baseDec;
-        
-        // Stop the timer
-        m_slewTimer->stop();
-        slewProgress = 0;
-
-        if (false) qDebug() << "After update - RA:" << m_telescopeState->ra << "Dec:" << m_telescopeState->dec;
-        
-        // Update mount status
-        m_statusSender->sendMountStatusToAll();
-
-        // Add delay to ensure coordinates are fully updated
-        QTimer::singleShot(100, this, [this]() {
-            if (m_hipsClient) {
-                if (false) qDebug() << "🎯 Slew complete - fetching HiPS data for new position";
-                
-                // Convert telescope coordinates to SkyPosition
-                SkyPosition newPos = {
-                    m_telescopeState->targetRa * 180.0 / M_PI,  // Convert radians to degrees
-                    m_telescopeState->targetDec * 180.0 / M_PI,
-                    "Slew_Target",
-                    "Position after telescope slew"
-                };
-                
-                if (false) qDebug() << "🎯 Using target coordinates for HiPS fetch - RA:" << newPos.ra_deg << "Dec:" << newPos.dec_deg;
-                fetchHipsImagesForPosition(newPos);
-            }
-        });
-        
-        if (false) qDebug() << "🎯 Slew complete";
-    }
 }
 
 // =============================================================================

@@ -124,8 +124,7 @@ public:
     int currentSequenceId = 16816;  // Start with real sequence ID from capture
     
     // Realistic progression variables
-    double baseRA = 186.15 * M_PI / 180.0;
-    double baseDec = 8.0 * M_PI / 180.0;
+    // ra/dec above are the true pointing, set from the mount model every 0.1 s (CelestronOriginSimulator::stepMount); nothing else moves them
     double startTime = 0.0;
 
     // Initialization state
@@ -178,23 +177,6 @@ public:
     
     QString getCurrentTime() {
         return dateTime.toString("hh:mm:ss");
-    }
-    
-    // Update celestial coordinates based on time (simulate tracking)
-    void updateCelestialCoordinates() {
-        double currentTime = QDateTime::currentDateTime().toMSecsSinceEpoch() / 1000.0;
-        double elapsedTime = currentTime - startTime;
-        
-        // Simulate sidereal tracking - RA changes ~15 arcsec/sec, Dec stays relatively stable
-        // Real telescope shows small progressive changes
-        double deltaRA = elapsedTime * 0.0000116; // Approximate sidereal rate
-        double deltaDec = (QRandomGenerator::global()->bounded(20) - 10) * 0.0000001; // Small random variation
-        
-        ra = baseRA + deltaRA;
-        dec = baseDec + deltaDec;
-        
-        // Orientation changes slightly over time
-        orientation = 3.120206959973186 + (elapsedTime * 0.00001);
     }
     
     // Update environmental sensors with realistic variation

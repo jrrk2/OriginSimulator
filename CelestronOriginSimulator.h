@@ -38,7 +38,6 @@ private slots:
     void handleIncomingData(QTcpSocket *socket);
     void sendBroadcast();
     void sendStatusUpdates();
-    void updateSlew();
     void updateImaging();
     void onWebSocketDisconnected();
     void processWebSocketCommand(const QString &message);
@@ -75,7 +74,6 @@ private:
     // Timers
     QTimer *m_broadcastTimer;
     QTimer *m_updateTimer;
-    QTimer *m_slewTimer;
     QTimer *m_imagingTimer;
     QTimer *m_connectionHealthTimer;
     QTimer *m_initTimer;
