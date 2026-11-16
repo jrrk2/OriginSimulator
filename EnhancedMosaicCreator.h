@@ -123,6 +123,9 @@ public:
     void createCustomMosaic(const SkyPosition& target);
     QImage getLastGeneratedMosaic() const { return m_fullMosaic; }
 
+public:
+    QImage cleanMosaic() const { return m_cleanMosaic; }   // the last centred mosaic without crosshair and labels
+
 signals:
     void mosaicComplete(const QImage& mosaic);  // NEW: Signal for completion
 
@@ -138,6 +141,7 @@ private:
     SkyPosition m_customTarget;
     SkyPosition m_actualTarget;
     QImage m_fullMosaic;
+    QImage m_cleanMosaic;
     
     // Tile structure
     struct SimpleTile {

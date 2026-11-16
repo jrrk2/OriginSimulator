@@ -5,6 +5,9 @@
 #include <QDateTime>
 #include <QStringList>
 #include <QRandomGenerator>
+#include <libnova/julian_day.h>
+
+#include "MountModel.h"
 
 class TelescopeState {
 public:
@@ -16,8 +19,10 @@ public:
     QString chargerStatus = "CHARGING";
     QDateTime dateTime = QDateTime::currentDateTime();
     QString timeZone = "Europe/London";
-    double latitude = 51.5072;   // London
-    double longitude = 0.1276;
+    // The mount as a machine: encoders, tilted base, flexure, the firmware's frame, cables (see MountModel). The site lives there, in radians.
+    MountModel mount;
+    bool liveStreamDisabled = false;     // SetDisableLiveStream; the firmware cannot add alignment references without the live stream
+    static double julianDateNow() { return ln_get_julian_from_sys(); }
     bool isAligned = true;  // Real telescope shows aligned
     bool isGotoOver = true;
     bool isTracking = false;
@@ -28,6 +33,9 @@ public:
     // Camera data (exact real values from session1.pcapng)
     int binning = 1;
     int bitDepth = 24;
+    bool debayer = true;     // SetCaptureParameters Debayer; BitDepth 16 with Debayer false gives raw Bayer FITS snapshots
+    int frameCounter = 0;
+    double cloud = 0.0;      // 0 clear .. 1 opaque; dims the simulated stars (env ORIGIN_SIM_CLOUD overrides)
     double colorBBalance = 120.0;
     double colorGBalance = 58.0;
     double colorRBalance = 78.0;
@@ -116,8 +124,7 @@ public:
     int currentSequenceId = 16816;  // Start with real sequence ID from capture
     
     // Realistic progression variables
-    double baseRA = 186.15 * M_PI / 180.0;
-    double baseDec = 8.0 * M_PI / 180.0;
+    // ra/dec above are the true pointing, set from the mount model every 0.1 s (CelestronOriginSimulator::stepMount); nothing else moves them
     double startTime = 0.0;
 
     // Initialization state
@@ -138,6 +145,14 @@ public:
   }
     TelescopeState() {
         syncTracking();
+        // Starts uninitialised, so that a client has to initialise it (PI.N.S.'s Unpark); ORIGIN_SIM_START_READY=1 starts as after a real initialisation, as the
+        // real telescope is when its own automatic initialisation after a reboot has succeeded
+        if (qEnvironmentVariable("ORIGIN_SIM_START_READY", "0") == "1") {
+            mount.initialise(false, julianDateNow());
+            isReady = true; state = "IDLE"; stage = "COMPLETE"; isAligned = true; numAlignRefs = 2;
+        } else {
+            isReady = false; state = "IDLE"; stage = "STOPPED"; isAligned = false; numAlignRefs = 0;
+        }
         // Initialize with some random variation like real telescope
         ambientTemperature += (QRandomGenerator::global()->bounded(200) - 100) / 100.0; // ±1°C variation
         cpuTemperature += (QRandomGenerator::global()->bounded(400) - 200) / 100.0;     // ±2°C variation
@@ -165,23 +180,6 @@ public:
         return dateTime.toString("hh:mm:ss");
     }
     
-    // Update celestial coordinates based on time (simulate tracking)
-    void updateCelestialCoordinates() {
-        double currentTime = QDateTime::currentDateTime().toMSecsSinceEpoch() / 1000.0;
-        double elapsedTime = currentTime - startTime;
-        
-        // Simulate sidereal tracking - RA changes ~15 arcsec/sec, Dec stays relatively stable
-        // Real telescope shows small progressive changes
-        double deltaRA = elapsedTime * 0.0000116; // Approximate sidereal rate
-        double deltaDec = (QRandomGenerator::global()->bounded(20) - 10) * 0.0000001; // Small random variation
-        
-        ra = baseRA + deltaRA;
-        dec = baseDec + deltaDec;
-        
-        // Orientation changes slightly over time
-        orientation = 3.120206959973186 + (elapsedTime * 0.00001);
-    }
-    
     // Update environmental sensors with realistic variation
     void updateEnvironmentalSensors() {
         // Add small random variations like real sensors
@@ -206,6 +204,11 @@ public:
     }
     
     // Get next image filename (cycles through 0-9 like real telescope)
+    QString getNextFITSFile() {
+        imageCounter = (imageCounter + 1) % 10;
+        return QString("/tmp/Images_%1.fits").arg(imageCounter);
+    }
+
     QString getNextTIFFFile() {
         imageCounter = (imageCounter + 1) % 10;
         return QString("/tmp/Images_%1.tiff").arg(imageCounter);

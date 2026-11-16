@@ -4,6 +4,7 @@ CONFIG += c++11
 
 TARGET = OriginSimulator
 TEMPLATE = app
+DEFINES += ORIGIN_SIM_SOURCE_DIR=\\\"$$PWD\\\"     # where data/gaia_dr3_g12.bin is found when the build is out of the tree
 INCLUDEPATH += healpixmirror/src/cxx/Healpix_cxx
 INCLUDEPATH += healpixmirror/src/cxx/cxxsupport
 LIBS += -lnova -ltiff
@@ -18,6 +19,7 @@ SOURCES += \
     WebSocketConnection.cpp \
     CommandHandler.cpp \
     TiffImageGenerator.cpp \
+    FitsImageGenerator.cpp \
     StatusSender.cpp \
     ProperHipsClient.cpp \
     EnhancedMosaicCreator.cpp \
@@ -27,12 +29,9 @@ SOURCES += \
     healpixmirror/src/cxx/cxxsupport/string_utils.cc \
     healpixmirror/src/cxx/cxxsupport/error_handling.cc \
     healpixmirror/src/cxx/cxxsupport/pointing.cc \
-    moc_CelestronOriginSimulator.cpp \
-    moc_CommandHandler.cpp \
-    moc_EnhancedMosaicCreator.cpp \
-    moc_ProperHipsClient.cpp \
-    moc_StatusSender.cpp \
-    moc_WebSocketConnection.cpp \
+    MountModel.cpp \
+    GaiaSky.cpp \
+    GaiaFetch.cpp \
    
 # Headers
 HEADERS += \
@@ -41,8 +40,13 @@ HEADERS += \
     WebSocketConnection.h \
     CommandHandler.h \
     TiffImageGenerator.h \
+    FitsImageGenerator.h \
     StatusSender.h \
-    moc_predefs.h \
+    ProperHipsClient.h \
+    EnhancedMosaicCreator.h \
+    MountModel.h \
+    GaiaSky.h \
+    GaiaFetch.h \
 
 # For Xcode project generation
 macx {
